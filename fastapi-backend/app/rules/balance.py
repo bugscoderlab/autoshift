@@ -15,7 +15,6 @@ class DoctorWorkload:
     doctor_name: str
     category: str  # fixed or flexible
     morning_count: int = 0
-    afternoon_count: int = 0
     evening_count: int = 0
     night_count: int = 0
     total_shifts: int = 0
@@ -80,8 +79,6 @@ class BalanceRuleEngine:
             
             if shift_type == "morning":
                 wl.morning_count += 1
-            elif shift_type == "afternoon":
-                wl.afternoon_count += 1
             elif shift_type == "evening":
                 wl.evening_count += 1
             elif shift_type == "night":
@@ -120,11 +117,11 @@ class BalanceRuleEngine:
         category: str
     ) -> List[Dict[str, Any]]:
         """
-        Check balance within a shift category (morning, afternoon, evening, night).
+        Check balance within a shift category (morning, evening, night).
         
         Args:
             workloads: Dictionary of workloads.
-            category: Shift category to check (morning, afternoon, evening, night).
+            category: Shift category to check (morning, evening, night).
             
         Returns:
             List of violations.
@@ -189,7 +186,6 @@ class BalanceRuleEngine:
         return {
             "total_doctors": len(flexible_workloads),
             "morning": calc_stats("morning_count"),
-            "afternoon": calc_stats("afternoon_count"),
             "evening": calc_stats("evening_count"),
             "night": calc_stats("night_count"),
             "total_shifts": calc_stats("total_shifts")

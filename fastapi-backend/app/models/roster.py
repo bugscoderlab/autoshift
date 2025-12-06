@@ -14,7 +14,6 @@ from .base import Base
 class ShiftType(str, Enum):
     """Shift type enum."""
     MORNING = "morning"
-    AFTERNOON = "afternoon"
     EVENING = "evening"
     NIGHT = "night"
 

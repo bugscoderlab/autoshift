@@ -237,7 +237,7 @@ class RosterAI:
         max_weekly_hours = rules.get("max_weekly_hours", 48)
         max_consecutive = rules.get("max_consecutive_days", 6)
         
-        shift_types = ["morning", "afternoon", "evening", "night"]
+        shift_types = ["morning", "evening", "night"]
         
         for day in range(1, num_days + 1):
             current_date = date(year, month, day)
@@ -432,7 +432,7 @@ class RosterAI:
                 by_date[date_str] = {"morning": [], "evening": [], "night": []}
             
             shift_type = entry.get("shift_type", "morning").lower()
-            if shift_type in ["morning", "afternoon"]:
+            if shift_type == "morning":
                 shift_key = "morning"
             elif shift_type == "evening":
                 shift_key = "evening"
@@ -494,7 +494,6 @@ class RosterAI:
         """Get shift start time."""
         mapping = {
             "morning": "08:00",
-            "afternoon": "12:00",
             "evening": "16:00",
             "night": "00:00",
         }
@@ -504,7 +503,6 @@ class RosterAI:
         """Get shift end time."""
         mapping = {
             "morning": "16:00",
-            "afternoon": "20:00",
             "evening": "00:00",
             "night": "08:00",
         }

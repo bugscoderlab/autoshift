@@ -27,8 +27,9 @@ RULES TO OBEY:
    - Leave/off-days are prorated based on FTE
    - Workload must be balanced fairly across all shift types
 3. No back-to-back night shifts for any doctor
-4. Ensure minimum staffing per shift (at least 2 doctors, must have one permanent doctor in each shift)
-5. Respect all approved leave and shift requests
+4. CRITICAL: EVERY shift type (morning, evening, night) MUST be filled for EVERY day of the month. No shift can be left empty.
+5. Ensure minimum staffing per shift (at least 2 doctors, must have one permanent doctor in each shift)
+6. Respect all approved leave and shift requests
 
 Always respond with valid JSON that can be parsed."""
 
@@ -50,7 +51,8 @@ Always respond with valid JSON that can be parsed."""
         doctors: List[Dict[str, Any]],
         shift_requests: List[Dict[str, Any]],
         leave_list: List[Dict[str, Any]],
-        existing_patterns: Dict[int, Dict[str, Any]]
+        existing_patterns: Dict[int, Dict[str, Any]],
+        rules: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generate a monthly roster using Claude.
@@ -62,25 +64,54 @@ Always respond with valid JSON that can be parsed."""
             shift_requests: List of approved shift requests
             leave_list: List of approved leaves
             existing_patterns: Weekly patterns for fixed doctors
+            rules: Optional generation rules (min_rest_hours, max_night_shifts, etc.)
             
         Returns:
             Generated roster with compliance report.
         """
-        prompt = f"""Generate a complete monthly roster for {month}/{year}.
+        # Build rules section for prompt
+        rules_section = ""
+        if rules:
+            rules_section = f"""
+GENERATION RULES:
+- Minimum rest hours between shifts: {rules.get('min_rest_hours', 11)} hours
+- Maximum night shifts per week: {rules.get('max_night_shifts', 4)}
+- Maximum weekly hours: {rules.get('max_weekly_hours', 48)} hours
+- Minimum staff per shift: {rules.get('min_staff_per_shift', 2)} doctors
+- Maximum consecutive working days: {rules.get('max_consecutive_days', 6)} days
+"""
+        else:
+            rules_section = """
+GENERATION RULES (defaults):
+- Minimum rest hours between shifts: 11 hours
+- Maximum night shifts per week: 4
+- Maximum weekly hours: 48 hours
+- Minimum staff per shift: 2 doctors
+- Maximum consecutive working days: 6 days
+"""
+        
+        import time
+        min_staff = rules.get('min_staff_per_shift', 2) if rules else 2
+        generation_id = int(time.time() * 1000)  # Unique ID to prevent caching
+        prompt = f"""Generate a complete monthly roster for {month}/{year} (Generation ID: {generation_id}).
 
 INPUTS:
 - Doctors: {json.dumps(doctors, default=str)}
 - Approved Shift Requests: {json.dumps(shift_requests, default=str)}
 - Leave List: {json.dumps(leave_list, default=str)}
 - Weekly Patterns for Fixed Doctors: {json.dumps(existing_patterns, default=str)}
+{rules_section}
+SHIFT TYPES: morning (08:00-16:00), evening (16:00-00:00), night (00:00-08:00)
 
-SHIFT TYPES: morning (08:00-16:00), afternoon (12:00-20:00), evening (16:00-00:00), night (00:00-08:00)
-
-TASK:
+CRITICAL REQUIREMENTS:
 1. Generate roster entries: {{"date": "YYYY-MM-DD", "doctor_id": int, "shift_type": string, "source": "auto|fixed-pattern|request"}}
-2. Ensure all rules are followed
-3. Include compliance_report with any violations
-4. Include balance_summary showing shift distribution
+2. CRITICAL: Ensure EVERY day has ALL shift types filled (morning, evening, night). No gaps allowed.
+3. CRITICAL: Each shift type MUST have at least {min_staff} staff members. If a shift has fewer than {min_staff} doctors, add more doctors to meet the minimum requirement.
+4. Ensure all rules are followed (especially the generation rules above)
+5. Include compliance_report with any violations
+6. Include balance_summary showing shift distribution
+
+IMPORTANT: This is a fresh generation - do not reuse or cache previous roster data. Generate completely new assignments.
 
 OUTPUT FORMAT (JSON only):
 {{

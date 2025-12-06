@@ -22,7 +22,7 @@ from ..rules.compliance import ComplianceChecker
 router = APIRouter(prefix="/roster", tags=["Roster"])
 
 # Valid shift types (after migration)
-VALID_SHIFT_TYPES = {"morning", "afternoon", "evening", "night"}
+VALID_SHIFT_TYPES = {"morning", "evening", "night"}
 
 
 class GenerateRosterRequest(BaseModel):
@@ -471,7 +471,6 @@ def _get_shift_type_name(shift_type) -> str:
     
     mapping = {
         "morning": "Morning",
-        "afternoon": "Afternoon",
         "evening": "Evening",
         "night": "Night",
         "off": "Off"
@@ -488,7 +487,6 @@ def _get_shift_time(shift_type) -> str:
     
     mapping = {
         "morning": "08:00-16:00",
-        "afternoon": "12:00-20:00",
         "evening": "16:00-00:00",
         "night": "00:00-08:00",
         "off": "Off"

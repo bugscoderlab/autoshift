@@ -116,7 +116,7 @@ class ComplianceChecker:
         all_violations.extend(flexible_violations)
         
         # Check balance across categories
-        for category in ["morning", "afternoon", "evening", "night"]:
+        for category in ["morning", "evening", "night"]:
             balance_violations = self.balance_engine.check_category_balance(workloads, category)
             all_violations.extend(balance_violations)
         
