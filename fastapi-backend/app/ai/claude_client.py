@@ -35,6 +35,10 @@ Always respond with valid JSON that can be parsed."""
     def __init__(self):
         """Initialize the Claude client."""
         self.api_key = settings.claude_api_key
+        if not self.api_key:
+            print("⚠️  [CLAUDE CLIENT] No API key configured - will use mock responses")
+        else:
+            print(f"✅ [CLAUDE CLIENT] API key configured: {self.api_key[:10]}...{self.api_key[-4:]}")
         self.base_url = settings.claude_api_base_url
         self.max_tokens = settings.ai_max_tokens
         self.temperature = settings.ai_temperature
@@ -193,6 +197,7 @@ Provide a helpful response about hospital rostering, shifts, leave, or swaps."""
         """
         if not self.api_key:
             # Return mock response for development
+            print("⚠️  [CLAUDE CLIENT] No API key - returning mock response")
             return self._mock_response(prompt, expect_json)
         
         try:
@@ -239,14 +244,22 @@ Provide a helpful response about hospital rostering, shifts, leave, or swaps."""
                             parsed = json.loads(json_str)
                             return parsed
                     except json.JSONDecodeError as e:
-                        print(f"⚠️ [CLAUDE] JSON parse error: {str(e)}")
+                        print(f"⚠️  [CLAUDE CLIENT] JSON parse error: {str(e)}")
                         print(f"   Content preview: {content[:300]}...")
                         pass
                 
+                print(f"✅ [CLAUDE CLIENT] Successfully received response from Claude API")
+                print(f"   Response length: {len(content)} chars")
                 return {"text": content}
                 
+        except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+            print(f"❌ [CLAUDE CLIENT] HTTP error: {error_msg}")
+            return {"error": error_msg, "text": f"Claude API error: {error_msg}"}
         except Exception as e:
-            return {"error": str(e), "text": f"AI service error: {str(e)}"}
+            error_msg = str(e)
+            print(f"❌ [CLAUDE CLIENT] Exception: {error_msg}")
+            return {"error": error_msg, "text": f"AI service error: {error_msg}"}
     
     def _mock_response(self, prompt: str, expect_json: bool) -> Dict[str, Any]:
         """Generate mock response for development without API key."""

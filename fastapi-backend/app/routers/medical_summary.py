@@ -171,8 +171,11 @@ async def generate_summary(
     
     try:
         # Generate summary using AI
+        print(f"\n{'='*60}")
         print(f"📊 [MEDICAL SUMMARY] Generating summary for recording_id={recording_id}")
         print(f"   Transcript length: {len(transcript.transcript_text)} chars")
+        print(f"   Doctor: {doctor.name}")
+        print(f"{'='*60}\n")
         
         summary_service = MedicalSummaryService()
         summary_data = await summary_service.generate_summary(
@@ -180,24 +183,35 @@ async def generate_summary(
             doctor_name=doctor.name
         )
         
-        print(f"✅ [MEDICAL SUMMARY] Summary generated:")
         populated_count = sum(1 for v in summary_data.values() if v)
+        print(f"\n{'='*60}")
+        print(f"✅ [MEDICAL SUMMARY] Summary generation complete!")
         print(f"   Fields populated: {populated_count}/6")
         print(f"   Chief Complaint: {bool(summary_data.get('chief_complaint'))} - {summary_data.get('chief_complaint', '')[:50]}...")
         print(f"   Assessment: {bool(summary_data.get('assessment'))} - {summary_data.get('assessment', '')[:50]}...")
         print(f"   Plan: {bool(summary_data.get('plan'))} - {summary_data.get('plan', '')[:50]}...")
+        print(f"{'='*60}\n")
+        
+        # Validate all fields are present before creating summary
+        populated_count = sum(1 for v in summary_data.values() if v)
+        if populated_count < 6:
+            print(f"⚠️  [MEDICAL SUMMARY] Warning: Only {populated_count}/6 fields populated")
+            print(f"   Missing fields:")
+            for key, value in summary_data.items():
+                if not value or not value.strip():
+                    print(f"     - {key}")
         
         # Create summary record
         summary = MedicalSummary(
             recording_id=recording_id,
             transcript_id=transcript.transcript_id,
             doctor_id=recording.doctor_id,
-            chief_complaint=summary_data.get("chief_complaint"),
-            history_of_present_illness=summary_data.get("history_of_present_illness"),
-            physical_examination=summary_data.get("physical_examination"),
-            assessment=summary_data.get("assessment"),
-            plan=summary_data.get("plan"),
-            follow_up_instructions=summary_data.get("follow_up_instructions"),
+            chief_complaint=summary_data.get("chief_complaint") or "",
+            history_of_present_illness=summary_data.get("history_of_present_illness") or "",
+            physical_examination=summary_data.get("physical_examination") or "",
+            assessment=summary_data.get("assessment") or "",
+            plan=summary_data.get("plan") or "",
+            follow_up_instructions=summary_data.get("follow_up_instructions") or "",
             status="draft"
         )
         
