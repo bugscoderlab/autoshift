@@ -118,6 +118,15 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="report"
+        options={{
+          title: 'Report',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="document-text" size={size} color={color} />
+          ),
+        }}
+      />
 
       {/* Hidden screens - not shown in tab bar */}
       <Tabs.Screen

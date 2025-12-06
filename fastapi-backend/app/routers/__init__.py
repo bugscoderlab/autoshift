@@ -7,6 +7,7 @@ from .roster import router as roster_router
 from .leave import router as leave_router
 from .swap import router as swap_router
 from .ai import router as ai_router
+from .medical_summary import router as medical_summary_router
 
 __all__ = [
     "doctors_router",
@@ -14,6 +15,7 @@ __all__ = [
     "leave_router",
     "swap_router",
     "ai_router",
+    "medical_summary_router",
 ]
 
 

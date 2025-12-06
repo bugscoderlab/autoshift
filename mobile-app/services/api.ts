@@ -403,6 +403,170 @@ export const aiApi = {
 export const healthCheck = () =>
   fetchApi<{ status: string; database: string; ai_enabled: boolean }>('/health');
 
+// Medical Summary API
+export interface MedicalRecording {
+  recording_id: number;
+  doctor_id: number;
+  patient_id?: number;
+  patient_name?: string;
+  audio_file_path?: string;
+  audio_file_url?: string;
+  duration_seconds?: number;
+  status: string;
+  consent_given: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Transcript {
+  transcript_id: number;
+  recording_id: number;
+  transcript_text: string;
+  language: string;
+  confidence_score?: string;
+  created_at: string;
+}
+
+export interface MedicalSummary {
+  summary_id: number;
+  recording_id: number;
+  transcript_id: number;
+  doctor_id: number;
+  chief_complaint?: string;
+  history_of_present_illness?: string;
+  physical_examination?: string;
+  assessment?: string;
+  plan?: string;
+  follow_up_instructions?: string;
+  status: string;
+  doctor_approved: boolean;
+  approved_at?: string;
+  approved_by?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const medicalSummaryApi = {
+  createRecording: async (
+    doctor_id: number,
+    patient_id?: number,
+    patient_name?: string,
+    consent_given: boolean = false
+  ): Promise<MedicalRecording> => {
+    const formData = new FormData();
+    formData.append('doctor_id', doctor_id.toString());
+    if (patient_id) formData.append('patient_id', patient_id.toString());
+    if (patient_name) formData.append('patient_name', patient_name);
+    formData.append('consent_given', consent_given.toString());
+
+    const response = await fetch(`${API_BASE_URL}/medical-summary/recording`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create recording');
+    }
+
+    return response.json();
+  },
+
+  transcribeAudio: async (
+    recording_id: number,
+    audioUri: string
+  ): Promise<Transcript> => {
+    const formData = new FormData();
+    const filename = audioUri.split('/').pop() || 'recording.m4a';
+    
+    // For React Native, use the URI directly
+    formData.append('audio_file', {
+      uri: audioUri,
+      type: 'audio/m4a',
+      name: filename,
+    } as any);
+
+    const uploadResponse = await fetch(
+      `${API_BASE_URL}/medical-summary/transcribe/${recording_id}`,
+      {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header - let FormData set it with boundary
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const error = await uploadResponse.json();
+      throw new Error(error.detail || 'Transcription failed');
+    }
+
+    return uploadResponse.json();
+  },
+
+  generateSummary: async (recording_id: number): Promise<MedicalSummary> => {
+    return fetchApi<MedicalSummary>(`/medical-summary/summary/${recording_id}`, {
+      method: 'POST',
+    });
+  },
+
+  getSummary: async (summary_id: number): Promise<MedicalSummary> => {
+    return fetchApi<MedicalSummary>(`/medical-summary/summary/${summary_id}`);
+  },
+
+  updateSummary: async (
+    summary_id: number,
+    updates: Partial<MedicalSummary>
+  ): Promise<MedicalSummary> => {
+    return fetchApi<MedicalSummary>(`/medical-summary/summary/${summary_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  approveSummary: async (
+    summary_id: number,
+    approved_by: number
+  ): Promise<MedicalSummary> => {
+    const formData = new FormData();
+    formData.append('approved_by', approved_by.toString());
+
+    const response = await fetch(
+      `${API_BASE_URL}/medical-summary/summary/${summary_id}/approve`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to approve summary');
+    }
+
+    return response.json();
+  },
+
+  getDoctorRecordings: async (doctor_id: number): Promise<MedicalRecording[]> => {
+    return fetchApi<MedicalRecording[]>(`/medical-summary/recordings/${doctor_id}`);
+  },
+
+  getDoctorSummaries: async (
+    doctor_id: number,
+    status?: string
+  ): Promise<MedicalSummary[]> => {
+    const url = status
+      ? `/medical-summary/summaries/${doctor_id}?status=${status}`
+      : `/medical-summary/summaries/${doctor_id}`;
+    return fetchApi<MedicalSummary[]>(url);
+  },
+
+  deleteRecording: async (recording_id: number): Promise<void> => {
+    return fetchApi<void>(`/medical-summary/recording/${recording_id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Default export
 export default {
   doctors: doctorApi,
@@ -410,5 +574,6 @@ export default {
   leave: leaveApi,
   swap: swapApi,
   ai: aiApi,
+  medicalSummary: medicalSummaryApi,
   healthCheck,
 };
