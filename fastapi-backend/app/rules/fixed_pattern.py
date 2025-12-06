@@ -146,7 +146,7 @@ class FixedPatternEngine:
         """
         errors = []
         
-        valid_shifts = {"morning", "afternoon", "evening", "night", "off", None}
+        valid_shifts = {"morning", "evening", "night", "off", None}
         
         for week_num, pattern in patterns.items():
             if week_num not in [1, 2, 3, 4]:

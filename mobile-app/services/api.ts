@@ -257,13 +257,13 @@ export const rosterApi = {
       suggested_fixes: any[];
     }>('/roster/generate', {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify({ ...params, use_ai: true }),
     }),
 
   repair: (params: { year: number; month: number; use_ai?: boolean }) =>
     fetchApi('/roster/repair', {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify({ ...params, use_ai: true }),
     }),
 
   save: (entries: Partial<RosterEntry>[]) =>
@@ -395,7 +395,7 @@ export const aiApi = {
   generateRoster: (year: number, month: number, rules: any) =>
     fetchApi<{ year: number; month: number; roster: RosterEntry[]; compliance_report: any; balance_summary: any }>('/ai/generate-roster', {
       method: 'POST',
-      body: JSON.stringify({ year, month, rules }),
+      body: JSON.stringify({ year, month, use_ai: true, rules }),
     }),
 };
 

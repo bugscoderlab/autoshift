@@ -25,7 +25,6 @@ class RestRuleEngine:
     
     DEFAULT_SHIFT_TIMES = {
         "morning": ("08:00", "16:00"),
-        "afternoon": ("12:00", "20:00"),
         "evening": ("16:00", "00:00"),
         "night": ("00:00", "08:00"),
     }

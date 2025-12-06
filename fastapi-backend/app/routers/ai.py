@@ -18,7 +18,7 @@ from ..rules.compliance import ComplianceChecker
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 # Valid shift types (after migration)
-VALID_SHIFT_TYPES = {"morning", "afternoon", "evening", "night"}
+VALID_SHIFT_TYPES = {"morning", "evening", "night"}
 
 
 class ExplainRequest(BaseModel):
@@ -278,18 +278,29 @@ async def generate_roster(
     """
     Generate a complete monthly roster following backend-zack pattern.
     Uses RosterService to generate roster with fixed patterns and AI for flexible doctors.
+    
+    Args:
+        request: Contains year, month, use_ai flag, and optional rules
     """
     from ..services.roster_service import RosterService
     
     try:
+        # Log the incoming request
+        print(f"📅 [AI/GENERATE-ROSTER] Received request: year={request.year}, month={request.month}, use_ai={request.use_ai}")
+        if request.rules:
+            print(f"📋 [AI/GENERATE-ROSTER] Rules provided: {request.rules}")
+        
         # Use roster service to generate roster
         service = RosterService(session)
-        roster_entries, violations, ai_used = service.generate_monthly_roster(
+        roster_entries, violations, ai_used = await service.generate_monthly_roster(
             request.year,
             request.month,
             use_ai=request.use_ai,
-            replace_existing=True
+            replace_existing=True,
+            rules=request.rules
         )
+        
+        print(f"✅ [AI/GENERATE-ROSTER] Generated {len(roster_entries)} roster entries for {request.year}-{request.month:02d}")
         
         # Get doctor names for response
         doctor_ids = set(entry.doctor_id for entry in roster_entries)
