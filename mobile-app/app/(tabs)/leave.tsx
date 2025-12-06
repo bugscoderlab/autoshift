@@ -153,12 +153,20 @@ export default function LeaveScreen() {
         rejected: currentDoctorLeaves.filter(l => l.status === 'rejected').length,
         annual_allocation: annualLeaveDays,
         used_days: usedDays,
-        days_left: daysLeft,
+        days_left_annual: daysLeft,
         source
+      });
+      
+      console.log('✈️ [LEAVE TAB] Leave balances by type:', {
+        annual: `${14 - usedDays} days left (used: ${usedDays})`,
+        medical: '14 days left (used: 0)',
+        emergency: '5 days left (used: 0)',
+        other: '3 days left (used: 0)'
       });
       
       console.log('✈️ [LEAVE TAB] Approved leaves breakdown:', 
         approvedLeaves.map(l => ({
+          leave_id: l.leave_id,
           type: l.type,
           start: l.startDate,
           end: l.endDate,
@@ -181,6 +189,28 @@ export default function LeaveScreen() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const pendingRequests = leaveRequests.filter(r => r.status === 'pending');
+
+  // Calculate remaining leave days for current doctor
+  const currentDoctorLeaves = isAdmin 
+    ? leaveRequests.filter(l => l.doctor_id === currentDoctorId)
+    : leaveRequests;
+  
+  const approvedDoctorLeaves = currentDoctorLeaves.filter(l => l.status === 'approved');
+  
+  // Calculate used days by leave type
+  const usedDaysByType = approvedDoctorLeaves.reduce((acc, leave) => {
+    const type = leave.type.toLowerCase();
+    acc[type] = (acc[type] || 0) + leave.days;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  // Calculate remaining days for each leave type
+  const leaveBalances = {
+    annual: 14 - (usedDaysByType['annual'] || 0),
+    medical: 14 - (usedDaysByType['medical'] || 0),
+    emergency: 5 - (usedDaysByType['emergency'] || 0),
+    other: 3 - (usedDaysByType['other'] || 0),
+  };
 
   const showToast = (type: 'success' | 'error', title: string, message?: string) => {
     if (hideTimer.current) { clearTimeout(hideTimer.current); }
@@ -292,15 +322,18 @@ export default function LeaveScreen() {
         {(activeTab === 'requests' || !isAdmin) && (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.balanceRow}>
-              {leaveTypes.map((type) => (
-                <View key={type.id} style={[styles.balanceCard, { backgroundColor: colors.card }]}>
-                  <View style={[styles.balanceIcon, { backgroundColor: type.color + '20' }]}>
-                    <Ionicons name={type.icon as any} size={18} color={type.color} />
+              {leaveTypes.map((type) => {
+                const remaining = leaveBalances[type.id as keyof typeof leaveBalances] || type.balance;
+                return (
+                  <View key={type.id} style={[styles.balanceCard, { backgroundColor: colors.card }]}>
+                    <View style={[styles.balanceIcon, { backgroundColor: type.color + '20' }]}>
+                      <Ionicons name={type.icon as any} size={18} color={type.color} />
+                    </View>
+                    <Text style={[styles.balanceNum, { color: colors.text }]}>{remaining}</Text>
+                    <Text style={[styles.balanceType, { color: colors.textSecondary }]}>{type.name}</Text>
                   </View>
-                  <Text style={[styles.balanceNum, { color: colors.text }]}>{type.balance}</Text>
-                  <Text style={[styles.balanceType, { color: colors.textSecondary }]}>{type.name}</Text>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
 
             <TouchableOpacity style={[styles.requestBtn, { backgroundColor: colors.primary }]} onPress={() => setLeaveModalVisible(true)}>

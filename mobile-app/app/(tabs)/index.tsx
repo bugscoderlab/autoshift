@@ -69,14 +69,37 @@ export default function HomeScreen() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   };
 
-  const annualLeaveDays = 14;
+  // Calculate leave days by type
+  const leaveAllocations = {
+    annual: 14,
+    medical: 14,
+    emergency: 5,
+    other: 3,
+  };
+  
+  const totalAllocation = Object.values(leaveAllocations).reduce((sum, val) => sum + val, 0); // 36 total
+  
   const approvedLeaves = leaves?.filter(l => l.status === 'approved') || [];
-  const usedLeaveDays = approvedLeaves.reduce((sum, leave) => {
-    // Use days field from API if available, otherwise calculate
+  
+  // Calculate used days by leave type
+  const usedDaysByType = approvedLeaves.reduce((acc, leave) => {
+    const type = leave.leave_type.toLowerCase();
     const days = leave.days || calculateDays(leave.start_date, leave.end_date);
-    return sum + days;
-  }, 0);
-  const leaveDaysLeft = annualLeaveDays - usedLeaveDays;
+    acc[type] = (acc[type] || 0) + days;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  // Calculate remaining days by type
+  const remainingByType = {
+    annual: leaveAllocations.annual - (usedDaysByType['annual'] || 0),
+    medical: leaveAllocations.medical - (usedDaysByType['medical'] || 0),
+    emergency: leaveAllocations.emergency - (usedDaysByType['emergency'] || 0),
+    other: leaveAllocations.other - (usedDaysByType['other'] || 0),
+  };
+  
+  // Total used and remaining across all leave types
+  const totalUsedDays = Object.values(usedDaysByType).reduce((sum, val) => sum + val, 0);
+  const leaveDaysLeft = Object.values(remainingByType).reduce((sum, val) => sum + val, 0);
 
   useEffect(() => {
     if (leaves) {
@@ -87,10 +110,23 @@ export default function HomeScreen() {
           pending: leaves.filter(l => l.status === 'pending').length,
           rejected: leaves.filter(l => l.status === 'rejected').length,
         },
-        annual_allocation: annualLeaveDays,
-        used_days: usedLeaveDays,
-        days_left: leaveDaysLeft,
         source: leaveSource || 'DATABASE'
+      });
+      
+      console.log('🏠 [HOME] Leave balance by type:', {
+        annual: `${remainingByType.annual}/${leaveAllocations.annual} (used: ${usedDaysByType['annual'] || 0})`,
+        medical: `${remainingByType.medical}/${leaveAllocations.medical} (used: ${usedDaysByType['medical'] || 0})`,
+        emergency: `${remainingByType.emergency}/${leaveAllocations.emergency} (used: ${usedDaysByType['emergency'] || 0})`,
+        other: `${remainingByType.other}/${leaveAllocations.other} (used: ${usedDaysByType['other'] || 0})`,
+      });
+      
+      console.log('🏠 [HOME] Total leave balance displayed:', {
+        label: 'Leave Days Left',
+        total_allocation: totalAllocation,
+        total_used: totalUsedDays,
+        total_remaining: leaveDaysLeft,
+        calculation: `${totalAllocation} - ${totalUsedDays} = ${leaveDaysLeft}`,
+        breakdown: remainingByType
       });
       
       if (approvedLeaves.length > 0) {
@@ -111,7 +147,7 @@ export default function HomeScreen() {
     } else if (!leaveLoading) {
       console.log('⚠️ [HOME] No leave data found');
     }
-  }, [leaves, leaveLoading, usedLeaveDays, leaveDaysLeft, leaveSource, approvedLeaves.length]);
+  }, [leaves, leaveLoading, totalUsedDays, leaveDaysLeft, leaveSource, approvedLeaves.length, remainingByType, totalAllocation, usedDaysByType]);
 
   // Week navigation state
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, 1 = next week, etc.
@@ -292,7 +328,7 @@ export default function HomeScreen() {
                   {formatShiftTime(shift.shift_type)}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              {/* <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} /> */}
             </View>
           ))}
         </View>
@@ -428,7 +464,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   weekNavButtonDisabled: {
-    opacity: 0.3,
+    opacity: 0,
   },
   actionsGrid: {
     flexDirection: 'row',
