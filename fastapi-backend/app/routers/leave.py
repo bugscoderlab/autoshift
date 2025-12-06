@@ -88,46 +88,51 @@ async def list_leaves(
     List leave requests with optional filtering.
     Returns leave requests with doctor names included.
     """
-    query = select(Leave)
-    
-    if doctor_id:
-        query = query.where(Leave.doctor_id == doctor_id)
-    if status:
-        query = query.where(Leave.status == status)
-    if start_date:
-        query = query.where(Leave.end_date >= start_date)
-    if end_date:
-        query = query.where(Leave.start_date <= end_date)
-    
-    query = query.order_by(Leave.start_date.desc())
-    result = session.execute(query)
-    leaves = result.scalars().all()
-    
-    # Get all doctors to add names
-    doctor_result = session.execute(select(Doctor))
-    doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
-    
-    # Add doctor names to leave requests
-    leaves_with_names = []
-    for leave in leaves:
-        doctor = doctors.get(leave.doctor_id)
-        leaves_with_names.append(LeaveWithDoctor(
-            leave_id=leave.leave_id,
-            doctor_id=leave.doctor_id,
-            doctor_name=doctor.name if doctor else None,
-            start_date=leave.start_date,
-            end_date=leave.end_date,
-            leave_type=leave.leave_type,
-            reason=leave.reason,
-            status=leave.status,
-            invite_coverage=leave.invite_coverage,
-            created_at=leave.created_at,
-            updated_at=leave.updated_at,
-            approved_by=leave.approved_by,
-            approved_at=leave.approved_at
-        ))
-    
-    return leaves_with_names
+    try:
+        query = select(Leave)
+        
+        if doctor_id:
+            query = query.where(Leave.doctor_id == doctor_id)
+        if status:
+            query = query.where(Leave.status == status)
+        if start_date:
+            query = query.where(Leave.end_date >= start_date)
+        if end_date:
+            query = query.where(Leave.start_date <= end_date)
+        
+        query = query.order_by(Leave.start_date.desc())
+        result = session.execute(query)
+        leaves = result.scalars().all()
+        
+        # Get all doctors to add names
+        doctor_result = session.execute(select(Doctor))
+        doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
+        
+        # Add doctor names to leave requests
+        leaves_with_names = []
+        for leave in leaves:
+            doctor = doctors.get(leave.doctor_id)
+            leaves_with_names.append(LeaveWithDoctor(
+                leave_id=leave.leave_id,
+                doctor_id=leave.doctor_id,
+                doctor_name=doctor.name if doctor else None,
+                start_date=leave.start_date,
+                end_date=leave.end_date,
+                leave_type=leave.leave_type,
+                reason=leave.reason,
+                status=leave.status,
+                invite_coverage=leave.invite_coverage,
+                created_at=leave.created_at,
+                updated_at=leave.updated_at,
+                approved_by=leave.approved_by
+            ))
+        
+        return leaves_with_names
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching leave requests: {str(e)}"
+        )
 
 
 @router.get("/pending")
@@ -280,8 +285,7 @@ async def create_leave(
         invite_coverage=db_leave.invite_coverage,
         created_at=db_leave.created_at,
         updated_at=db_leave.updated_at,
-        approved_by=db_leave.approved_by,
-        approved_at=db_leave.approved_at
+        approved_by=db_leave.approved_by
     )
 
 
