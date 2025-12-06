@@ -25,7 +25,7 @@ RULES TO OBEY:
    - Maximum 4 confirmed shifts per month
    - Minimum 11 hours rest between consecutive shifts
    - Leave/off-days are prorated based on FTE
-   - Workload must be balanced across Resus/EDx/AUC categories
+   - Workload must be balanced fairly across all shift types
 3. No back-to-back night shifts for any doctor
 4. Ensure minimum staffing per shift (at least 2 doctors, must have one permanent doctor in each shift)
 5. Respect all approved leave and shift requests
@@ -70,7 +70,7 @@ INPUTS:
 - Leave List: {json.dumps(leave_list, default=str)}
 - Weekly Patterns for Fixed Doctors: {json.dumps(existing_patterns, default=str)}
 
-SHIFT TYPES: morning (08:00-16:00), afternoon (12:00-20:00), evening (16:00-00:00), night (00:00-08:00), resus, edx, auc
+SHIFT TYPES: morning (08:00-16:00), afternoon (12:00-20:00), evening (16:00-00:00), night (00:00-08:00)
 
 TASK:
 1. Generate roster entries: {{"date": "YYYY-MM-DD", "doctor_id": int, "shift_type": string, "source": "auto|fixed-pattern|request"}}

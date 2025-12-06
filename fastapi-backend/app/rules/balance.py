@@ -14,10 +14,8 @@ class DoctorWorkload:
     doctor_id: int
     doctor_name: str
     category: str  # fixed or flexible
-    resus_count: int = 0
-    edx_count: int = 0
-    auc_count: int = 0
     morning_count: int = 0
+    afternoon_count: int = 0
     evening_count: int = 0
     night_count: int = 0
     total_shifts: int = 0
@@ -26,7 +24,7 @@ class DoctorWorkload:
 class BalanceRuleEngine:
     """
     Engine for checking workload balance across doctors.
-    Ensures fair distribution of Resus/EDx/AUC shifts.
+    Ensures fair distribution of all shift types.
     """
     
     # Maximum deviation from average allowed
@@ -80,14 +78,10 @@ class BalanceRuleEngine:
             wl = workloads[doctor_id]
             wl.total_shifts += 1
             
-            if shift_type == "resus":
-                wl.resus_count += 1
-            elif shift_type == "edx":
-                wl.edx_count += 1
-            elif shift_type == "auc":
-                wl.auc_count += 1
-            elif shift_type == "morning":
+            if shift_type == "morning":
                 wl.morning_count += 1
+            elif shift_type == "afternoon":
+                wl.afternoon_count += 1
             elif shift_type == "evening":
                 wl.evening_count += 1
             elif shift_type == "night":
@@ -122,15 +116,15 @@ class BalanceRuleEngine:
     
     def check_category_balance(
         self, 
-        workloads: Dict[int, DoctorWorkload],
+        workloads: Dict[int, DoctorWorkload], 
         category: str
     ) -> List[Dict[str, Any]]:
         """
-        Check balance within a shift category (resus, edx, auc).
+        Check balance within a shift category (morning, afternoon, evening, night).
         
         Args:
             workloads: Dictionary of workloads.
-            category: Shift category to check (resus, edx, auc).
+            category: Shift category to check (morning, afternoon, evening, night).
             
         Returns:
             List of violations.
@@ -194,10 +188,8 @@ class BalanceRuleEngine:
         
         return {
             "total_doctors": len(flexible_workloads),
-            "resus": calc_stats("resus_count"),
-            "edx": calc_stats("edx_count"),
-            "auc": calc_stats("auc_count"),
             "morning": calc_stats("morning_count"),
+            "afternoon": calc_stats("afternoon_count"),
             "evening": calc_stats("evening_count"),
             "night": calc_stats("night_count"),
             "total_shifts": calc_stats("total_shifts")

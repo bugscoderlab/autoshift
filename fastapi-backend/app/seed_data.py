@@ -156,15 +156,15 @@ def seed_database():
         )
         patterns.append(pattern3)
         
-        # Pattern 4: Resus/EDx pattern
+        # Pattern 4: Afternoon pattern
         pattern4 = WeeklyFixedPattern(
-            pattern_name="Resus/EDx Week 1",
+            pattern_name="Afternoon Week 1",
             week_number=1,
-            day_1="resus",
-            day_2="edx",
-            day_3="resus",
-            day_4="edx",
-            day_5="auc",
+            day_1="afternoon",
+            day_2="afternoon",
+            day_3="afternoon",
+            day_4="afternoon",
+            day_5="afternoon",
             day_6="off",
             day_7="off"
         )
@@ -612,7 +612,7 @@ def seed_leave_and_swap_data(session: Session):
         {
             "requester_id": doctors[5].doctor_id,
             "requester_shift_date": today + timedelta(days=14),
-            "requester_shift_type": ShiftType.RESUS,
+            "requester_shift_type": ShiftType.MORNING,
             "target_id": None,
             "target_shift_date": None,
             "target_shift_type": None,
@@ -623,7 +623,7 @@ def seed_leave_and_swap_data(session: Session):
         {
             "requester_id": doctors[6].doctor_id,
             "requester_shift_date": today + timedelta(days=20),
-            "requester_shift_type": ShiftType.EDX,
+            "requester_shift_type": ShiftType.AFTERNOON,
             "target_id": doctors[0].doctor_id,
             "target_shift_date": today + timedelta(days=22),
             "target_shift_type": ShiftType.NIGHT,

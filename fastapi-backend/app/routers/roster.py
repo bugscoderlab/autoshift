@@ -21,6 +21,9 @@ from ..rules.compliance import ComplianceChecker
 
 router = APIRouter(prefix="/roster", tags=["Roster"])
 
+# Valid shift types (after migration)
+VALID_SHIFT_TYPES = {"morning", "afternoon", "evening", "night"}
+
 
 class GenerateRosterRequest(BaseModel):
     """Request body for roster generation with rules."""
@@ -104,21 +107,24 @@ async def list_roster(
     doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
     
     # Add doctor names and departments to roster entries
+    # Filter to only include valid shift types
     roster_with_names = []
     for r in roster_entries:
-        doctor = doctors.get(r.doctor_id)
-        roster_with_names.append(RosterWithDoctor(
-            roster_id=r.roster_id,
-            date=r.date,
-            doctor_id=r.doctor_id,
-            doctor_name=doctor.name if doctor else None,
-            doctor_department=doctor.department if doctor else None,
-            shift_type=r.shift_type,
-            source=r.source,
-            start_time=r.start_time,
-            end_time=r.end_time,
-            notes=r.notes
-        ))
+        # Only include entries with valid shift types
+        if r.shift_type.lower() in VALID_SHIFT_TYPES:
+            doctor = doctors.get(r.doctor_id)
+            roster_with_names.append(RosterWithDoctor(
+                roster_id=r.roster_id,
+                date=r.date,
+                doctor_id=r.doctor_id,
+                doctor_name=doctor.name if doctor else None,
+                doctor_department=doctor.department if doctor else None,
+                shift_type=r.shift_type,
+                source=r.source,
+                start_time=r.start_time,
+                end_time=r.end_time,
+                notes=r.notes
+            ))
     
     return roster_with_names
 
@@ -156,9 +162,14 @@ async def get_roster_calendar(
     doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
     
     # Group by date with staff details
+    # Filter to only include valid shift types
     calendar: Dict[str, Dict[str, Any]] = {}
     
     for r in roster:
+        # Only include entries with valid shift types
+        if r.shift_type.lower() not in VALID_SHIFT_TYPES:
+            continue
+            
         date_str = str(r.date)
         if date_str not in calendar:
             calendar[date_str] = {
@@ -213,6 +224,7 @@ async def get_my_shifts(
     
     doctor = session.get(Doctor, doctor_id)
     
+    # Filter to only include valid shift types
     return [
         {
             "id": str(s.roster_id),
@@ -223,6 +235,7 @@ async def get_my_shifts(
             "roster_id": s.roster_id
         }
         for s in shifts
+        if s.shift_type.lower() in VALID_SHIFT_TYPES
     ]
 
 
@@ -461,9 +474,6 @@ def _get_shift_type_name(shift_type) -> str:
         "afternoon": "Afternoon",
         "evening": "Evening",
         "night": "Night",
-        "resus": "Resus",
-        "edx": "EDx",
-        "auc": "AUC",
         "off": "Off"
     }
     return mapping.get(type_str.lower(), type_str.capitalize())
@@ -481,9 +491,6 @@ def _get_shift_time(shift_type) -> str:
         "afternoon": "12:00-20:00",
         "evening": "16:00-00:00",
         "night": "00:00-08:00",
-        "resus": "08:00-16:00",
-        "edx": "08:00-16:00",
-        "auc": "08:00-16:00",
         "off": "Off"
     }
     return mapping.get(type_str.lower(), "08:00-16:00")

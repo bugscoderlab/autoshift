@@ -28,9 +28,6 @@ class RestRuleEngine:
         "afternoon": ("12:00", "20:00"),
         "evening": ("16:00", "00:00"),
         "night": ("00:00", "08:00"),
-        "resus": ("08:00", "20:00"),
-        "edx": ("08:00", "20:00"),
-        "auc": ("08:00", "20:00"),
     }
     
     def __init__(self, min_rest_hours: int = 11):

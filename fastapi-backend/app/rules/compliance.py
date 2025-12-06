@@ -116,7 +116,7 @@ class ComplianceChecker:
         all_violations.extend(flexible_violations)
         
         # Check balance across categories
-        for category in ["resus", "edx", "auc"]:
+        for category in ["morning", "afternoon", "evening", "night"]:
             balance_violations = self.balance_engine.check_category_balance(workloads, category)
             all_violations.extend(balance_violations)
         
@@ -240,15 +240,6 @@ class ComplianceChecker:
         for shift in shifts:
             shift_date = str(shift.get("date"))
             shift_type = str(shift.get("shift_type", "")).lower()
-            
-            if shift_type == "off":
-                continue
-            
-            # Normalize shift types
-            if shift_type in ["resus", "edx", "auc"]:
-                shift_type = "morning"
-            elif shift_type == "afternoon":
-                shift_type = "evening"
             
             if shift_date not in staffing:
                 staffing[shift_date] = {}

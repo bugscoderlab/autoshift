@@ -17,6 +17,9 @@ from ..rules.compliance import ComplianceChecker
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
+# Valid shift types (after migration)
+VALID_SHIFT_TYPES = {"morning", "afternoon", "evening", "night"}
+
 
 class ExplainRequest(BaseModel):
     """Request body for violation explanation."""
@@ -297,18 +300,21 @@ async def generate_roster(
                 doctors_dict[doctor_id] = doctor.name
         
         # Convert to response format matching current /ai/generate-roster format
+        # Filter to only include valid shift types
         roster_list = []
         for entry in roster_entries:
-            roster_list.append({
-                "roster_id": entry.roster_id,
-                "date": str(entry.date),
-                "doctor_id": entry.doctor_id,
-                "doctor_name": doctors_dict.get(entry.doctor_id, f"Doctor {entry.doctor_id}"),
-                "shift_type": entry.shift_type,
-                "source": entry.source,
-                "start_time": entry.start_time,
-                "end_time": entry.end_time
-            })
+            # Only include entries with valid shift types
+            if entry.shift_type.lower() in VALID_SHIFT_TYPES:
+                roster_list.append({
+                    "roster_id": entry.roster_id,
+                    "date": str(entry.date),
+                    "doctor_id": entry.doctor_id,
+                    "doctor_name": doctors_dict.get(entry.doctor_id, f"Doctor {entry.doctor_id}"),
+                    "shift_type": entry.shift_type,
+                    "source": entry.source,
+                    "start_time": entry.start_time,
+                    "end_time": entry.end_time
+                })
         
         # Build compliance report
         violation_messages = [v.description for v in violations]
