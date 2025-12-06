@@ -83,10 +83,9 @@ const mockShifts: Record<string, {
 
 const shiftColors: Record<string, string> = {
   Morning: '#FF843B',
+  Afternoon: '#FFA500',
   Evening: '#FF4F70',
   Night: '#003BFF',
-  Resus: '#34d399',
-  Edx: '#8b5cf6',
 };
 
 // Helper function to get shift color based on shift type

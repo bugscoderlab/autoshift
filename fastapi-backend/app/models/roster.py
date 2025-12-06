@@ -17,10 +17,6 @@ class ShiftType(str, Enum):
     AFTERNOON = "afternoon"
     EVENING = "evening"
     NIGHT = "night"
-    RESUS = "resus"
-    EDX = "edx"
-    AUC = "auc"
-    OFF = "off"
 
 
 class RosterSource(str, Enum):
