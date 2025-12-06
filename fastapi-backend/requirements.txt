@@ -32,7 +32,3 @@ loguru==0.7.2
 # Excel Export
 openpyxl==3.1.2
 pandas>=2.0.0
-
-# CORS
-starlette==0.35.1
-

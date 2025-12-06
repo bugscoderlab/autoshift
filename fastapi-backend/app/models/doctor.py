@@ -15,6 +15,7 @@ class DoctorCategory(str, Enum):
     """Doctor category enum."""
     FIXED = "fixed"
     FLEXIBLE = "flexible"
+    HOUSEMAN = "houseman"
 
 
 class Doctor(Base):

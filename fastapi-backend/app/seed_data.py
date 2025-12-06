@@ -34,7 +34,6 @@ def seed_database():
                 session.commit()
             
             # Delete existing roster entries to regenerate with new multi-staff logic
-            from .models.roster import MonthlyRoster
             existing_rosters = session.exec(select(MonthlyRoster)).all()
             for roster in existing_rosters:
                 session.delete(roster)
@@ -46,7 +45,6 @@ def seed_database():
             today = date.today()
             current_month_start = date(today.year, today.month, 1)
             
-            from .models.roster import ShiftType, RosterSource
             # Only 3 shifts per day: Morning, Evening, Night
             shift_types = [ShiftType.MORNING, ShiftType.EVENING, ShiftType.NIGHT]
             roster_entries = []
