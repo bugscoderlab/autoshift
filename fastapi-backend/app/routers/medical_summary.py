@@ -171,11 +171,21 @@ async def generate_summary(
     
     try:
         # Generate summary using AI
+        print(f"📊 [MEDICAL SUMMARY] Generating summary for recording_id={recording_id}")
+        print(f"   Transcript length: {len(transcript.transcript_text)} chars")
+        
         summary_service = MedicalSummaryService()
         summary_data = await summary_service.generate_summary(
             transcript.transcript_text,
             doctor_name=doctor.name
         )
+        
+        print(f"✅ [MEDICAL SUMMARY] Summary generated:")
+        populated_count = sum(1 for v in summary_data.values() if v)
+        print(f"   Fields populated: {populated_count}/6")
+        print(f"   Chief Complaint: {bool(summary_data.get('chief_complaint'))} - {summary_data.get('chief_complaint', '')[:50]}...")
+        print(f"   Assessment: {bool(summary_data.get('assessment'))} - {summary_data.get('assessment', '')[:50]}...")
+        print(f"   Plan: {bool(summary_data.get('plan'))} - {summary_data.get('plan', '')[:50]}...")
         
         # Create summary record
         summary = MedicalSummary(
@@ -195,9 +205,14 @@ async def generate_summary(
         session.commit()
         session.refresh(summary)
         
+        print(f"✅ [MEDICAL SUMMARY] Summary saved to database with summary_id={summary.summary_id}")
+        
         return summary
         
     except Exception as e:
+        print(f"❌ [MEDICAL SUMMARY] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
 
 
@@ -335,4 +350,97 @@ async def delete_recording(
     session.commit()
     
     return {"message": "Recording and associated data deleted successfully"}
+
+
+@router.post("/test/mock-summary", response_model=SummaryRead)
+async def test_mock_summary(
+    doctor_id: int = Form(...),
+    case: str = Form("cough"),
+    session: Session = Depends(get_session)
+):
+    """
+    TEST ENDPOINT: Generate a summary from mock transcript data.
+    Useful for testing without requiring audio recording.
+    
+    Args:
+        doctor_id: Doctor ID for the summary
+        case: Mock case name (cough, headache, abdominal_pain, fever)
+        
+    Returns:
+        Generated medical summary from mock data
+    """
+    from ..services.mock_medical_data import get_mock_transcript, get_all_mock_cases
+    
+    if case not in get_all_mock_cases():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid case. Available cases: {', '.join(get_all_mock_cases())}"
+        )
+    
+    # Verify doctor exists
+    doctor = session.get(Doctor, doctor_id)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    
+    try:
+        # Get mock transcript
+        mock_transcript = get_mock_transcript(case)
+        
+        # Create a temporary recording record
+        recording = MedicalRecording(
+            doctor_id=doctor_id,
+            patient_name=f"Test Patient ({case})",
+            consent_given=True,
+            status="completed"
+        )
+        session.add(recording)
+        session.commit()
+        session.refresh(recording)
+        
+        # Create transcript record
+        transcript = Transcript(
+            recording_id=recording.recording_id,
+            transcript_text=mock_transcript,
+            language="en",
+            confidence_score="1.0"
+        )
+        session.add(transcript)
+        session.commit()
+        session.refresh(transcript)
+        
+        # Generate summary using AI
+        print(f"🧪 [TEST] Generating mock summary for case: {case}")
+        summary_service = MedicalSummaryService()
+        summary_data = await summary_service.generate_summary(
+            mock_transcript,
+            doctor_name=doctor.name
+        )
+        
+        # Create summary record
+        summary = MedicalSummary(
+            recording_id=recording.recording_id,
+            transcript_id=transcript.transcript_id,
+            doctor_id=doctor_id,
+            chief_complaint=summary_data.get("chief_complaint"),
+            history_of_present_illness=summary_data.get("history_of_present_illness"),
+            physical_examination=summary_data.get("physical_examination"),
+            assessment=summary_data.get("assessment"),
+            plan=summary_data.get("plan"),
+            follow_up_instructions=summary_data.get("follow_up_instructions"),
+            status="draft"
+        )
+        
+        session.add(summary)
+        session.commit()
+        session.refresh(summary)
+        
+        print(f"✅ [TEST] Mock summary created with summary_id={summary.summary_id}")
+        
+        return summary
+        
+    except Exception as e:
+        print(f"❌ [TEST] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Mock summary generation failed: {str(e)}")
 

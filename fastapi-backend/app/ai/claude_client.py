@@ -224,12 +224,23 @@ Provide a helpful response about hospital rostering, shifts, leave, or swaps."""
                 if expect_json:
                     # Try to extract JSON from response
                     try:
+                        # Remove markdown code blocks if present
+                        import re
+                        cleaned = content.strip()
+                        cleaned = re.sub(r'```json\s*\n?', '', cleaned)
+                        cleaned = re.sub(r'```\s*\n?', '', cleaned)
+                        cleaned = cleaned.strip()
+                        
                         # Find JSON in response
-                        start = content.find("{")
-                        end = content.rfind("}") + 1
+                        start = cleaned.find("{")
+                        end = cleaned.rfind("}") + 1
                         if start >= 0 and end > start:
-                            return json.loads(content[start:end])
-                    except json.JSONDecodeError:
+                            json_str = cleaned[start:end]
+                            parsed = json.loads(json_str)
+                            return parsed
+                    except json.JSONDecodeError as e:
+                        print(f"⚠️ [CLAUDE] JSON parse error: {str(e)}")
+                        print(f"   Content preview: {content[:300]}...")
                         pass
                 
                 return {"text": content}

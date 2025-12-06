@@ -76,8 +76,9 @@ export default function ReportScreen() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [editingSummary, setEditingSummary] = useState<Partial<MedicalSummary>>({});
   const [recentSummaries, setRecentSummaries] = useState<MedicalSummary[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load recent summaries on mount
   useEffect(() => {
@@ -143,7 +144,7 @@ export default function ReportScreen() {
       // Start duration counter
       durationIntervalRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
-      }, 1000);
+      }, 1000) as ReturnType<typeof setInterval>;
     } catch (error) {
       console.error('Failed to start recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
@@ -217,11 +218,65 @@ export default function ReportScreen() {
 
       setTranscript(transcriptData);
 
-      // Step 4: Generate summary
+      // Step 4: Generate summary using AI
+      console.log('🤖 [MEDICAL SUMMARY] Generating AI summary from transcript...');
+      console.log('   Transcript length:', transcriptData.transcript_text.length);
+      console.log('   Transcript preview:', transcriptData.transcript_text.substring(0, 100) + '...');
+      
       const summaryData = await medicalSummaryApi.generateSummary(recordingData.recording_id);
+      
+      // Log detailed summary data
+      const fieldStatus = {
+        chief_complaint: !!summaryData.chief_complaint,
+        history_of_present_illness: !!summaryData.history_of_present_illness,
+        physical_examination: !!summaryData.physical_examination,
+        assessment: !!summaryData.assessment,
+        plan: !!summaryData.plan,
+        follow_up_instructions: !!summaryData.follow_up_instructions,
+      };
+      const populatedCount = Object.values(fieldStatus).filter(Boolean).length;
+      
+      console.log('✅ [MEDICAL SUMMARY] Summary generated:', {
+        summary_id: summaryData.summary_id,
+        populated_fields: `${populatedCount}/6`,
+        field_status: fieldStatus,
+        chief_complaint_preview: summaryData.chief_complaint?.substring(0, 80) || '<empty>',
+        assessment_preview: summaryData.assessment?.substring(0, 80) || '<empty>',
+      });
+      
+      // Verify we have data before opening modal
+      if (populatedCount === 0) {
+        console.error('❌ [MEDICAL SUMMARY] Summary is completely empty!');
+        Alert.alert(
+          'Warning',
+          'The AI summary generation returned empty fields. You can still edit the summary manually.',
+          [{ text: 'OK' }]
+        );
+      } else if (populatedCount < 3) {
+        console.warn(`⚠️ [MEDICAL SUMMARY] Only ${populatedCount}/6 fields populated`);
+      }
+      
+      // Auto-fill modal with AI-generated summary (ensure all fields are strings)
+      const editingData = {
+        chief_complaint: String(summaryData.chief_complaint || ''),
+        history_of_present_illness: String(summaryData.history_of_present_illness || ''),
+        physical_examination: String(summaryData.physical_examination || ''),
+        assessment: String(summaryData.assessment || ''),
+        plan: String(summaryData.plan || ''),
+        follow_up_instructions: String(summaryData.follow_up_instructions || ''),
+      };
+      
+      console.log('📝 [MEDICAL SUMMARY] Setting editing summary:', {
+        chief_complaint_length: editingData.chief_complaint.length,
+        assessment_length: editingData.assessment.length,
+      });
+      
       setSummary(summaryData);
-      setEditingSummary(summaryData);
+      setEditingSummary(editingData);
+      
+      // Open modal automatically with AI-generated data
       setShowSummaryModal(true);
+      console.log('✅ [MEDICAL SUMMARY] Modal opened with summary data');
 
       // Reset form
       setPatientName('');
@@ -231,7 +286,8 @@ export default function ReportScreen() {
       // Reload recent summaries
       await loadRecentSummaries();
 
-      Alert.alert('Success', 'Recording transcribed and summary generated successfully!');
+      // Show success toast (modal is already open, so no alert needed)
+      console.log('✅ [MEDICAL SUMMARY] Modal opened with AI-generated summary');
     } catch (error: any) {
       console.error('Upload/transcription error:', error);
       Alert.alert(
@@ -243,21 +299,55 @@ export default function ReportScreen() {
     }
   };
 
-  // Save edited summary
+  // Save edited summary to database
   const saveSummary = async () => {
-    if (!summary) return;
+    if (!summary) {
+      Alert.alert('Error', 'No summary to save.');
+      return;
+    }
 
+    setIsSaving(true);
     try {
+      console.log('💾 [MEDICAL SUMMARY] Saving edited summary to database...', {
+        summary_id: summary.summary_id,
+        changes: editingSummary,
+      });
+
+      // Save changes to database
       const updated = await medicalSummaryApi.updateSummary(
         summary.summary_id,
         editingSummary as Partial<MedicalSummary>
       );
+      
+      console.log('✅ [MEDICAL SUMMARY] Summary saved successfully:', {
+        summary_id: updated.summary_id,
+        status: updated.status,
+        chief_complaint: updated.chief_complaint?.substring(0, 50) + '...',
+      });
+
+      // Update state with saved data
       setSummary(updated);
-      setShowSummaryModal(false);
-      Alert.alert('Success', 'Summary updated successfully!');
+      setEditingSummary(updated); // Sync editing state with saved data
+
+      // Reload recent summaries to show updated data
       await loadRecentSummaries();
+
+      // Show success feedback (keep modal open for continued editing)
+      Alert.alert('✅ Saved', 'Your changes have been saved to the database.', [
+        {
+          text: 'Continue Editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Close',
+          onPress: () => setShowSummaryModal(false),
+        },
+      ]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save summary.');
+      console.error('❌ [MEDICAL SUMMARY] Failed to save summary:', error);
+      Alert.alert('Error', error.message || 'Failed to save summary. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -474,10 +564,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.chief_complaint || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, chief_complaint: text })
-                }
+                value={String(editingSummary.chief_complaint || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, chief_complaint: text }));
+                }}
                 placeholder="Enter chief complaint..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -488,10 +578,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.history_of_present_illness || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, history_of_present_illness: text })
-                }
+                value={String(editingSummary.history_of_present_illness || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, history_of_present_illness: text }));
+                }}
                 placeholder="Enter history..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -502,10 +592,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.physical_examination || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, physical_examination: text })
-                }
+                value={String(editingSummary.physical_examination || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, physical_examination: text }));
+                }}
                 placeholder="Enter examination findings..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -516,10 +606,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.assessment || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, assessment: text })
-                }
+                value={String(editingSummary.assessment || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, assessment: text }));
+                }}
                 placeholder="Enter assessment..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -530,10 +620,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.plan || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, plan: text })
-                }
+                value={String(editingSummary.plan || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, plan: text }));
+                }}
                 placeholder="Enter treatment plan..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -544,10 +634,10 @@ export default function ReportScreen() {
               <TextInput
                 style={[styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                 multiline
-                value={editingSummary.follow_up_instructions || ''}
-                onChangeText={(text) =>
-                  setEditingSummary({ ...editingSummary, follow_up_instructions: text })
-                }
+                value={String(editingSummary.follow_up_instructions || '')}
+                onChangeText={(text) => {
+                  setEditingSummary(prev => ({ ...prev, follow_up_instructions: text }));
+                }}
                 placeholder="Enter follow-up instructions..."
                 placeholderTextColor={colors.textSecondary}
               />
@@ -557,10 +647,19 @@ export default function ReportScreen() {
           {/* Modal Footer */}
           <View style={[styles.modalFooter, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              style={[
+                styles.modalButton,
+                { backgroundColor: colors.background, borderColor: colors.border },
+                isSaving && { opacity: 0.6 },
+              ]}
               onPress={saveSummary}
+              disabled={isSaving}
             >
-              <Text style={[styles.modalButtonText, { color: colors.text }]}>Save Changes</Text>
+              {isSaving ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Save Changes</Text>
+              )}
             </TouchableOpacity>
             {summary && !summary.doctor_approved && (
               <TouchableOpacity
