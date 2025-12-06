@@ -107,10 +107,12 @@ async def list_leaves(
     doctor_result = session.execute(select(Doctor))
     doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
     
-    # Add doctor names to leave requests
+    # Add doctor names and calculate days
     leaves_with_names = []
     for leave in leaves:
         doctor = doctors.get(leave.doctor_id)
+        days = (leave.end_date - leave.start_date).days + 1
+        
         leaves_with_names.append(LeaveWithDoctor(
             leave_id=leave.leave_id,
             doctor_id=leave.doctor_id,
@@ -124,7 +126,8 @@ async def list_leaves(
             created_at=leave.created_at,
             updated_at=leave.updated_at,
             approved_by=leave.approved_by,
-            approved_at=leave.approved_at
+            approved_at=getattr(leave, 'approved_at', None),
+            days=days
         ))
     
     return leaves_with_names
@@ -268,6 +271,8 @@ async def create_leave(
     session.commit()
     session.refresh(db_leave)
     
+    days = (db_leave.end_date - db_leave.start_date).days + 1
+    
     return LeaveWithDoctor(
         leave_id=db_leave.leave_id,
         doctor_id=db_leave.doctor_id,
@@ -281,7 +286,8 @@ async def create_leave(
         created_at=db_leave.created_at,
         updated_at=db_leave.updated_at,
         approved_by=db_leave.approved_by,
-        approved_at=db_leave.approved_at
+        approved_at=getattr(db_leave, 'approved_at', None),
+        days=days
     )
 
 
@@ -297,6 +303,8 @@ async def get_leave(
     
     doctor = session.get(Doctor, leave.doctor_id)
     
+    days = (leave.end_date - leave.start_date).days + 1
+    
     return LeaveWithDoctor(
         leave_id=leave.leave_id,
         doctor_id=leave.doctor_id,
@@ -308,7 +316,10 @@ async def get_leave(
         invite_coverage=leave.invite_coverage,
         created_at=leave.created_at,
         updated_at=leave.updated_at,
-        doctor_name=doctor.name if doctor else None
+        doctor_name=doctor.name if doctor else None,
+        approved_by=leave.approved_by,
+        approved_at=getattr(leave, 'approved_at', None),
+        days=days
     )
 
 
@@ -325,6 +336,7 @@ async def approve_leave(
     
     leave.status = "approved"
     leave.approved_by = approved_by
+    leave.approved_at = datetime.utcnow()
     leave.updated_at = datetime.utcnow()
     session.add(leave)
     session.commit()

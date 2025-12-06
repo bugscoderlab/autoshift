@@ -1,36 +1,26 @@
 /**
  * API Service for connecting to FastAPI backend
  * 
- * For mobile development:
- * - Android Emulator: use 10.0.2.2 (maps to host's localhost)
- * - iOS Simulator: use localhost
- * - Physical device: use your computer's local IP address
+ * Features:
+ * - Auto-detects backend IP address (no manual configuration needed!)
+ * - Caches successful IP for faster reconnection
+ * - Supports manual override for advanced users
+ * - Works across different devices and networks
  */
-import { Platform } from 'react-native';
+import { getCurrentApiUrl } from './apiConfig';
 
-// Use different URLs for different platforms/environments
-const getApiBaseUrl = () => {
-  // For physical devices, use the computer's local IP address
-  // Update this IP address to match your computer's IP (run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux)
-  const LOCAL_IP = '172.20.10.6'; // Your computer's IP address on the local network
-  
-  // For Android emulator, use 10.0.2.2 to access host machine
-  if (Platform.OS === 'android' && __DEV__) {
-    // Check if running on emulator or physical device
-    // Physical devices need the local IP, emulators use 10.0.2.2
-    return `http://${LOCAL_IP}:8000`;
-  }
-  
-  // For iOS simulator and web, try localhost first, then local IP
-  if (Platform.OS === 'web') {
-    return 'http://localhost:8000';
-  }
-  
-  // For iOS physical devices, use local IP
-  return `http://${LOCAL_IP}:8000`;
-};
+// API Base URL - will be set asynchronously
+let API_BASE_URL = 'http://localhost:8000'; // Fallback default
 
-const API_BASE_URL = getApiBaseUrl();
+// Initialize API URL on module load
+(async () => {
+  try {
+    API_BASE_URL = await getCurrentApiUrl();
+    console.log(`🌐 [API] Initialized with base URL: ${API_BASE_URL}`);
+  } catch (error) {
+    console.error('❌ [API] Failed to initialize API URL:', error);
+  }
+})();
 
 // Connection state
 let isBackendAvailable = true;
@@ -45,13 +35,21 @@ export async function checkBackendConnection(): Promise<boolean> {
   }
   
   try {
+    // Refresh API URL in case it changed
+    API_BASE_URL = await getCurrentApiUrl();
+    
     const response = await fetch(`${API_BASE_URL}/health`, { 
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
     isBackendAvailable = response.ok;
     lastConnectionCheck = now;
-  } catch {
+    
+    if (response.ok) {
+      console.log(`✅ [API] Backend available at ${API_BASE_URL}`);
+    }
+  } catch (error) {
+    console.log(`⚠️ [API] Backend unavailable at ${API_BASE_URL}:`, String(error));
     isBackendAvailable = false;
     lastConnectionCheck = now;
   }

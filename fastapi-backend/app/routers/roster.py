@@ -103,14 +103,16 @@ async def list_roster(
     doctor_result = session.execute(select(Doctor))
     doctors = {d.doctor_id: d for d in doctor_result.scalars().all()}
     
-    # Add doctor names to roster entries
+    # Add doctor names and departments to roster entries
     roster_with_names = []
     for r in roster_entries:
+        doctor = doctors.get(r.doctor_id)
         roster_with_names.append(RosterWithDoctor(
             roster_id=r.roster_id,
             date=r.date,
             doctor_id=r.doctor_id,
-            doctor_name=doctors.get(r.doctor_id).name if r.doctor_id in doctors else None,
+            doctor_name=doctor.name if doctor else None,
+            doctor_department=doctor.department if doctor else None,
             shift_type=r.shift_type,
             source=r.source,
             start_time=r.start_time,

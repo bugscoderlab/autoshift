@@ -45,6 +45,7 @@ class Leave(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     approved_by = Column(Integer, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
 
 
 # Pydantic schemas
@@ -77,3 +78,5 @@ class LeaveRead(LeaveBase):
 class LeaveWithDoctor(LeaveRead):
     """Schema for leave with doctor details."""
     doctor_name: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    days: Optional[int] = None  # Calculated field for number of days
