@@ -215,6 +215,9 @@ async def generate_summary(
             status="draft"
         )
         
+        # Store patient name in summary for easy access (via recording relationship)
+        # The patient_name is already stored in MedicalRecording, accessible via recording.patient_name
+        
         session.add(summary)
         session.commit()
         session.refresh(summary)

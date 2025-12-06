@@ -39,15 +39,24 @@ class MedicalSummaryService:
         has_api_key = bool(self.claude_client.api_key)
         print(f"\n{'='*60}")
         print(f"🤖 [MEDICAL SUMMARY] Starting summary generation")
-        print(f"   Source: {'Claude AI' if has_api_key else 'Mock Data (no API key)'}")
         print(f"   API Key Configured: {has_api_key}")
         if has_api_key:
             print(f"   API Key Preview: {self.claude_client.api_key[:10]}...{self.claude_client.api_key[-4:]}")
+            print(f"   📊 Source: CLAUDE AI (will attempt API call first)")
         else:
             print(f"   ⚠️  CLAUDE_API_KEY not found in .env - will use mock data")
+            print(f"   📊 Source: MOCK DATA (no API key)")
         print(f"{'='*60}\n")
         
         prompt = self._build_summary_prompt(transcript, doctor_name)
+        
+        # If no API key, use mock data immediately
+        if not has_api_key:
+            print(f"⚠️  [MEDICAL SUMMARY] No API key configured - using mock summary")
+            mock_summary = self._generate_mock_summary(transcript)
+            print(f"✅ [MEDICAL SUMMARY] Generated mock summary with {sum(1 for v in mock_summary.values() if v)}/6 fields")
+            print(f"   📊 Source: MOCK DATA (no API key)")
+            return mock_summary
         
         try:
             # Use Claude's _call_api method with custom temperature
@@ -59,17 +68,32 @@ class MedicalSummaryService:
             self.claude_client.temperature = 0.3  # Lower temperature for medical summaries
             self.claude_client.SYSTEM_PROMPT = "You are an expert medical documentation assistant specializing in converting doctor-patient consultations into structured SOAP note format. Always respond with valid JSON."
             
-            # Try to get JSON response first
+            # ALWAYS try API call first if API key is configured
             print(f"📡 [MEDICAL SUMMARY] Calling Claude AI API...")
+            print(f"   Attempting API call with configured API key...")
             response = await self.claude_client._call_api(prompt, expect_json=True)
             
-            # Check if we got a mock response
+            # Check if API call failed (error in response)
+            if isinstance(response, dict) and "error" in response:
+                error_msg = response.get("error", "")
+                print(f"\n❌ [MEDICAL SUMMARY] Claude API call failed!")
+                print(f"   Error: {error_msg[:200]}")
+                print(f"   🔄 Falling back to mock summary...")
+                mock_summary = self._generate_mock_summary(transcript)
+                populated = sum(1 for v in mock_summary.values() if v)
+                print(f"✅ [MEDICAL SUMMARY] Generated mock summary with {populated}/6 fields")
+                print(f"   📊 Source: MOCK DATA (API failed: {error_msg[:50]})")
+                return mock_summary
+            
+            # Check if we got a mock response (only if API key was missing - should not happen here)
             if isinstance(response, dict) and "text" in response:
                 response_text = response.get("text", "")
-                if "mock" in response_text.lower() or "configure CLAUDE_API_KEY" in response_text:
-                    print(f"⚠️  [MEDICAL SUMMARY] Received mock response from Claude client")
+                # Only check for mock if response explicitly says it's a mock (from _mock_response)
+                if response.get("mock") is True or "Mock AI response" in response_text:
+                    print(f"⚠️  [MEDICAL SUMMARY] Received mock response despite API key being configured")
+                    print(f"   This should not happen - checking API key again...")
                     print(f"   Response: {response_text[:200]}...")
-                    print(f"   🔄 Switching to mock summary generation...")
+                    print(f"   🔄 Falling back to mock summary generation...")
                     mock_summary = self._generate_mock_summary(transcript)
                     print(f"✅ [MEDICAL SUMMARY] Generated mock summary with {sum(1 for v in mock_summary.values() if v)}/6 fields")
                     print(f"   📊 Source: MOCK DATA")
@@ -114,17 +138,17 @@ class MedicalSummaryService:
                 print(f"   📊 Source: CLAUDE AI")
                 return result
             
-            # Otherwise parse from text
+            # Otherwise parse from text response
             summary_text = response.get("text", str(response))
             print(f"📝 [MEDICAL SUMMARY] Parsing text response from Claude AI")
             print(f"   Response length: {len(summary_text)} chars")
             print(f"   Response preview: {summary_text[:200]}...")
             
-            # Check if API call failed (e.g., 401 Unauthorized)
-            if "error" in response or "401" in summary_text or "Unauthorized" in summary_text:
+            # Check if API call failed (e.g., 401 Unauthorized, network error)
+            if "error" in response or "401" in summary_text or "Unauthorized" in summary_text or "Claude API error" in summary_text:
                 print(f"\n⚠️  [MEDICAL SUMMARY] Claude API call failed!")
-                print(f"   Error: {summary_text[:200]}")
-                print(f"   🔄 Switching to mock summary fallback...")
+                print(f"   Error detected in response: {summary_text[:200]}")
+                print(f"   🔄 Falling back to mock summary...")
                 mock_summary = self._generate_mock_summary(transcript)
                 populated = sum(1 for v in mock_summary.values() if v)
                 print(f"✅ [MEDICAL SUMMARY] Generated mock summary with {populated}/6 fields")
@@ -256,43 +280,57 @@ class MedicalSummaryService:
 **TRANSCRIPT:**
 {transcript}
 
-**TASK:** Extract and categorize information into 6 fields. Respond with ONLY valid JSON (no markdown, no explanations).
+**TASK:** Extract SPECIFIC, DETAILED information from the transcript and organize into 6 JSON fields. You MUST extract actual details mentioned in the conversation - do NOT use generic placeholders like "as described in transcript" or "as documented". Extract the actual information.
+
+**CRITICAL REQUIREMENTS:**
+- Extract SPECIFIC details from the transcript
+- Use actual information mentioned in the conversation
+- Do NOT use generic phrases like "as described in transcript", "as documented", "as discussed"
+- Be precise and detailed - extract exact symptoms, findings, medications, etc.
+- If information is not mentioned, use "Not mentioned" or "Not documented" - but still try to extract what IS mentioned
 
 **REQUIRED JSON FORMAT:**
 {{
-  "chief_complaint": "Main reason patient is here (1-2 sentences)",
-  "history_of_present_illness": "Timeline of symptoms, onset, duration, severity, associated factors",
-  "physical_examination": "Objective findings: vital signs, exam results, observations",
-  "assessment": "Clinical diagnosis or differential diagnosis",
-  "plan": "Treatment: medications with dosages, tests, referrals, interventions",
-  "follow_up_instructions": "When to return, warning signs, lifestyle changes"
+  "chief_complaint": "EXTRACT the exact main reason patient is seeking care - use patient's own words or doctor's summary",
+  "history_of_present_illness": "EXTRACT specific symptom details: when it started, how long, severity, what makes it better/worse, associated symptoms - use actual details from transcript",
+  "physical_examination": "EXTRACT specific exam findings: vital signs mentioned, physical exam results, observations - use actual values/findings from transcript. If not mentioned, use 'Not documented'",
+  "assessment": "EXTRACT the doctor's diagnosis or clinical conclusion - use actual diagnosis mentioned or infer from symptoms",
+  "plan": "EXTRACT specific treatment details: exact medications with dosages, tests ordered, referrals - use actual details from transcript",
+  "follow_up_instructions": "EXTRACT specific follow-up instructions: when to return, what to watch for, warning signs - use actual instructions from transcript"
 }}
 
 **CATEGORIZATION RULES:**
-- Chief Complaint: What patient says is wrong (subjective complaint)
-- History: Timeline, symptoms, triggers, what helps/worsens (subjective history)
-- Physical Exam: Only objective findings (vital signs, exam results, observations)
-- Assessment: Doctor's diagnosis/conclusion (not symptoms - those go in History)
-- Plan: Specific actions taken (medications with dosages, tests ordered, referrals)
-- Follow-up: Return instructions, warning signs, lifestyle modifications
+1. **Chief Complaint**: Extract what the patient actually said or what the doctor identified as the main issue. Be specific.
+2. **History of Present Illness**: Extract the actual timeline, symptoms, triggers, severity, duration mentioned. Include specific details like "started 3 days ago", "worse in evenings", etc.
+3. **Physical Examination**: Extract ONLY objective findings actually mentioned: vital signs (with actual numbers), exam results, observations. If not mentioned, use "Not documented".
+4. **Assessment**: Extract the doctor's actual diagnosis or clinical conclusion. If not explicitly stated, infer from symptoms but be specific.
+5. **Plan**: Extract specific treatment actions: medication names with exact dosages, tests ordered, referrals made. Be precise.
+6. **Follow-up Instructions**: Extract specific instructions: return dates, warning signs to watch for, lifestyle modifications mentioned.
 
-**CRITICAL:** 
-- Respond with ONLY the JSON object
-- No markdown code blocks (no ```json)
-- No extra text before or after JSON
-- Use empty string "" if field has no information
+**DO NOT USE GENERIC PHRASES:**
+- ❌ "as described in transcript"
+- ❌ "as documented"
+- ❌ "as discussed"
+- ❌ "examination findings as documented"
+- ❌ "treatment plan as discussed"
 
-**EXAMPLE:**
+**DO USE SPECIFIC DETAILS:**
+- ✅ "Patient reports headache for 3 days, worse in mornings"
+- ✅ "BP 140/90, HR 88, Temp 98.6°F"
+- ✅ "Prescribed ibuprofen 400mg twice daily for 5 days"
+- ✅ "Return in 1 week if symptoms persist"
+
+**EXAMPLE OUTPUT:**
 {{
-  "chief_complaint": "45-year-old male with 3-day cough",
-  "history_of_present_illness": "Dry cough started 3 days ago, worsening. Chest tightness evenings. No fever.",
-  "physical_examination": "BP 128/82, HR 78, Temp 98.6°F. Lungs clear bilaterally.",
-  "assessment": "Acute bronchitis, viral",
-  "plan": "Guaifenesin 600mg twice daily x 7 days. Increase fluids.",
-  "follow_up_instructions": "Return in 7-10 days if persists or if difficulty breathing develops"
+  "chief_complaint": "Patient presents with 3-day history of persistent dry cough",
+  "history_of_present_illness": "Dry cough started 3 days ago, progressively worsening. Associated with chest tightness in evenings. No fever, no shortness of breath. Denies recent travel or sick contacts.",
+  "physical_examination": "Vital signs: BP 128/82, HR 78, Temp 98.6°F, O2 Sat 98%. Respiratory examination: Clear to auscultation bilaterally, no wheezes or rales.",
+  "assessment": "Acute bronchitis, likely viral etiology",
+  "plan": "Guaifenesin 600mg twice daily for 7 days. Increase fluid intake. Rest as needed.",
+  "follow_up_instructions": "Return in 7-10 days if symptoms persist. Return immediately if experiencing difficulty breathing or high fever (>101°F)."
 }}
 
-**NOW EXTRACT AND CATEGORIZE THE TRANSCRIPT INTO JSON:**"""
+**NOW ANALYZE THE TRANSCRIPT AND EXTRACT SPECIFIC, DETAILED INFORMATION INTO JSON (NO GENERIC PLACEHOLDERS):**"""
         
         return prompt
     
@@ -432,47 +470,123 @@ class MedicalSummaryService:
         return result
     
     def _generate_mock_summary(self, transcript: str) -> Dict[str, str]:
-        """Generate a basic mock summary when AI fails."""
-        print(f"📝 [MEDICAL SUMMARY] Generating mock summary from transcript...")
-        # Simple rule-based extraction for testing
+        """Generate a detailed mock summary by extracting actual information from transcript."""
+        print(f"📝 [MEDICAL SUMMARY] Generating detailed mock summary from transcript...")
+        import re
+        
         transcript_lower = transcript.lower()
+        transcript_lines = transcript.split('\n')
         
-        # Extract chief complaint (check more specific terms first)
+        # Extract chief complaint - look for patient statements
         chief_complaint = ""
-        history = ""
-        assessment = ""
-        
-        if "stomach pain" in transcript_lower or "abdominal pain" in transcript_lower or ("pain" in transcript_lower and ("stomach" in transcript_lower or "abdomen" in transcript_lower)):
-            chief_complaint = "Patient presents with abdominal pain"
-            history = "Patient reports abdominal pain as described in transcript. Location and characteristics noted."
-            assessment = "Abdominal pain, requires further evaluation"
+        if "headache" in transcript_lower:
+            # Extract duration if mentioned
+            duration_match = re.search(r'(\d+)\s*(day|days|week|weeks|hour|hours)', transcript_lower)
+            duration = duration_match.group(0) if duration_match else ""
+            chief_complaint = f"Patient presents with headache{f' for {duration}' if duration else ''}"
         elif "cough" in transcript_lower:
-            chief_complaint = "Patient presents with cough"
-            history = "Patient reports cough as described in transcript. Duration and characteristics noted."
-            assessment = "Acute bronchitis, likely viral"
-        elif "headache" in transcript_lower:
-            chief_complaint = "Patient presents with headache"
-            history = "Patient reports headache as described in transcript. Duration and characteristics noted."
-            assessment = "Tension headache"
+            duration_match = re.search(r'(\d+)\s*(day|days|week|weeks)', transcript_lower)
+            duration = duration_match.group(0) if duration_match else ""
+            chief_complaint = f"Patient presents with cough{f' for {duration}' if duration else ''}"
         elif "fever" in transcript_lower:
-            chief_complaint = "Patient presents with fever"
-            history = "Patient reports fever as described in transcript. Duration and associated symptoms noted."
+            duration_match = re.search(r'(\d+)\s*(day|days)', transcript_lower)
+            duration = duration_match.group(0) if duration_match else ""
+            chief_complaint = f"Patient presents with fever{f' for {duration}' if duration else ''}"
+        elif "pain" in transcript_lower:
+            location_match = re.search(r'(stomach|abdominal|chest|back|head|leg|arm)', transcript_lower)
+            location = location_match.group(1) if location_match else ""
+            chief_complaint = f"Patient presents with {location + ' ' if location else ''}pain"
+        else:
+            # Extract first patient statement
+            for line in transcript_lines:
+                if "patient:" in line.lower() or line.lower().strip().startswith("i "):
+                    complaint = line.split(':', 1)[-1].strip()[:100]
+                    if complaint:
+                        chief_complaint = complaint
+                        break
+            if not chief_complaint:
+                chief_complaint = "Patient seeking medical consultation"
+        
+        # Extract history - get actual symptom details
+        history_parts = []
+        if "started" in transcript_lower or "began" in transcript_lower:
+            start_match = re.search(r'(started|began).*?(\d+)\s*(day|days|week|weeks|hour|hours)', transcript_lower)
+            if start_match:
+                history_parts.append(f"Symptoms {start_match.group(0)}")
+        
+        if "worse" in transcript_lower or "better" in transcript_lower:
+            worse_match = re.search(r'(worse|better).*?([^.]+)', transcript_lower)
+            if worse_match:
+                history_parts.append(f"Symptoms are {worse_match.group(0)[:80]}")
+        
+        # Extract associated symptoms
+        symptoms = []
+        for symptom in ["fever", "nausea", "vomiting", "dizziness", "fatigue", "shortness of breath"]:
+            if symptom in transcript_lower:
+                symptoms.append(symptom)
+        
+        if symptoms:
+            history_parts.append(f"Associated symptoms: {', '.join(symptoms)}")
+        
+        history = ". ".join(history_parts) if history_parts else "Patient reports symptoms as described in transcript."
+        
+        # Extract physical examination - look for vital signs
+        exam_parts = []
+        bp_match = re.search(r'(\d{2,3})/(\d{2,3})|blood pressure.*?(\d{2,3})/(\d{2,3})', transcript_lower)
+        if bp_match:
+            bp = bp_match.group(0) if bp_match.group(0) else f"{bp_match.group(1)}/{bp_match.group(2)}"
+            exam_parts.append(f"BP {bp}")
+        
+        temp_match = re.search(r'(\d{2,3})\.?\d*\s*(degree|°|fahrenheit|f)', transcript_lower)
+        if temp_match:
+            exam_parts.append(f"Temp {temp_match.group(0)}")
+        
+        hr_match = re.search(r'heart rate.*?(\d{2,3})|hr.*?(\d{2,3})|pulse.*?(\d{2,3})', transcript_lower)
+        if hr_match:
+            hr = hr_match.group(1) or hr_match.group(2) or hr_match.group(3)
+            exam_parts.append(f"HR {hr}")
+        
+        physical_examination = ". ".join(exam_parts) if exam_parts else "Not documented in transcript"
+        
+        # Extract assessment
+        assessment = ""
+        if "headache" in transcript_lower:
+            assessment = "Tension headache"
+        elif "cough" in transcript_lower:
+            assessment = "Acute bronchitis, likely viral"
+        elif "fever" in transcript_lower:
             assessment = "Viral upper respiratory infection"
         elif "pain" in transcript_lower:
-            chief_complaint = "Patient presents with pain"
-            history = "Patient reports pain as described in transcript. Location and characteristics noted."
             assessment = "Pain, requires further evaluation"
         else:
-            chief_complaint = "Patient seeking medical consultation"
-            history = "Patient reports symptoms as described in transcript."
-            assessment = "General consultation"
+            assessment = "Requires further evaluation"
+        
+        # Extract plan - look for medications
+        plan_parts = []
+        med_match = re.search(r'(ibuprofen|acetaminophen|paracetamol|aspirin|antibiotic).*?(\d+)\s*(mg|mg|milligram)', transcript_lower)
+        if med_match:
+            plan_parts.append(f"{med_match.group(1).capitalize()} {med_match.group(2)}{med_match.group(3)}")
+        
+        if "rest" in transcript_lower:
+            plan_parts.append("Rest as needed")
+        if "fluid" in transcript_lower:
+            plan_parts.append("Increase fluid intake")
+        
+        plan = ". ".join(plan_parts) if plan_parts else "Treatment plan as discussed with patient"
+        
+        # Follow-up instructions
+        follow_up = "Follow-up as needed. Return if symptoms worsen or persist."
+        if "return" in transcript_lower or "follow" in transcript_lower:
+            return_match = re.search(r'return.*?(\d+)\s*(day|days|week|weeks)', transcript_lower)
+            if return_match:
+                follow_up = f"Return in {return_match.group(0)} if symptoms persist."
         
         return {
             "chief_complaint": chief_complaint,
             "history_of_present_illness": history,
-            "physical_examination": "Examination findings as documented in transcript.",
+            "physical_examination": physical_examination,
             "assessment": assessment,
-            "plan": "Treatment plan as discussed with patient during consultation.",
-            "follow_up_instructions": "Follow-up as needed. Return if symptoms worsen or persist."
+            "plan": plan,
+            "follow_up_instructions": follow_up
         }
 

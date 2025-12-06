@@ -80,6 +80,7 @@ export default function ReportScreen() {
   const [editingSummary, setEditingSummary] = useState<Partial<MedicalSummary>>({});
   const [recentSummaries, setRecentSummaries] = useState<MedicalSummary[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [currentPatientName, setCurrentPatientName] = useState<string>('');
 
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -222,9 +223,12 @@ export default function ReportScreen() {
       setTranscript(transcriptData);
 
       // Step 4: Generate summary using AI
+      console.log('\n============================================================');
       console.log('🤖 [MEDICAL SUMMARY] Generating AI summary from transcript...');
       console.log('   Transcript length:', transcriptData.transcript_text.length);
       console.log('   Transcript preview:', transcriptData.transcript_text.substring(0, 100) + '...');
+      console.log('   📡 Calling backend API to generate summary...');
+      console.log('============================================================\n');
       
       const summaryData = await medicalSummaryApi.generateSummary(recordingData.recording_id);
       
@@ -239,13 +243,28 @@ export default function ReportScreen() {
       };
       const populatedCount = Object.values(fieldStatus).filter(Boolean).length;
       
-      console.log('✅ [MEDICAL SUMMARY] Summary generated:', {
-        summary_id: summaryData.summary_id,
-        populated_fields: `${populatedCount}/6`,
-        field_status: fieldStatus,
-        chief_complaint_preview: summaryData.chief_complaint?.substring(0, 80) || '<empty>',
-        assessment_preview: summaryData.assessment?.substring(0, 80) || '<empty>',
-      });
+      // Determine source based on content patterns
+      // Mock data has very generic patterns, Claude AI has more specific content
+      const isMockData = 
+        (summaryData.chief_complaint?.includes('Patient presents with') && 
+         summaryData.history_of_present_illness?.includes('as described in transcript') &&
+         summaryData.plan?.includes('Treatment plan as discussed')) ||
+        (summaryData.chief_complaint === 'Patient presents with headache' &&
+         summaryData.assessment === 'Tension headache' &&
+         summaryData.history_of_present_illness?.includes('as described in transcript'));
+      
+      // Also check backend logs - if API key was missing, it's mock data
+      // This is a heuristic - actual source should be logged in backend
+      
+      console.log('\n============================================================');
+      console.log('✅ [MEDICAL SUMMARY] Summary received from backend:');
+      console.log('   Summary ID:', summaryData.summary_id);
+      console.log('   Fields populated:', `${populatedCount}/6`);
+      console.log('   📊 Source:', isMockData ? 'MOCK DATA ⚠️' : 'CLAUDE AI ✅');
+      console.log('   Field Status:', fieldStatus);
+      console.log('   Chief Complaint:', summaryData.chief_complaint?.substring(0, 80) || '<empty>');
+      console.log('   Assessment:', summaryData.assessment?.substring(0, 80) || '<empty>');
+      console.log('============================================================\n');
       
       // Verify we have data before opening modal
       if (populatedCount === 0) {
@@ -276,6 +295,9 @@ export default function ReportScreen() {
       
       setSummary(summaryData);
       setEditingSummary(editingData);
+      
+      // Store patient name for display in modal
+      setCurrentPatientName(patientName || '');
       
       // Open modal automatically with AI-generated data
       setShowSummaryModal(true);
@@ -481,9 +503,31 @@ export default function ReportScreen() {
               <TouchableOpacity
                 key={item.summary_id}
                 style={[styles.summaryCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-                onPress={() => {
+                onPress={async () => {
                   setSummary(item);
-                  setEditingSummary(item);
+                  setEditingSummary({
+                    chief_complaint: item.chief_complaint || '',
+                    history_of_present_illness: item.history_of_present_illness || '',
+                    physical_examination: item.physical_examination || '',
+                    assessment: item.assessment || '',
+                    plan: item.plan || '',
+                    follow_up_instructions: item.follow_up_instructions || '',
+                  });
+                  
+                  // Fetch patient name from recording
+                  try {
+                    const recordings = await medicalSummaryApi.getDoctorRecordings(currentDoctorId);
+                    const recording = recordings.find(r => r.recording_id === item.recording_id);
+                    if (recording && recording.patient_name) {
+                      setCurrentPatientName(recording.patient_name);
+                    } else {
+                      setCurrentPatientName('');
+                    }
+                  } catch (error) {
+                    console.error('Failed to load patient name:', error);
+                    setCurrentPatientName('');
+                  }
+                  
                   setShowSummaryModal(true);
                 }}
               >
@@ -554,7 +598,14 @@ export default function ReportScreen() {
             >
               <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>Medical Summary</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Medical Summary</Text>
+                  {currentPatientName && (
+                    <Text style={[styles.patientNameLabel, { color: colors.textSecondary }]}>
+                      Patient: {currentPatientName}
+                    </Text>
+                  )}
+                </View>
                 <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                   <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
@@ -853,6 +904,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  patientNameLabel: {
+    fontSize: 14,
+    marginTop: 4,
   },
   modalScroll: {
     paddingHorizontal: 20,

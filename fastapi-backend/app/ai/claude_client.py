@@ -197,7 +197,8 @@ Provide a helpful response about hospital rostering, shifts, leave, or swaps."""
         """
         if not self.api_key:
             # Return mock response for development
-            print("⚠️  [CLAUDE CLIENT] No API key - returning mock response")
+            print("⚠️  [CLAUDE CLIENT] No API key configured - returning mock response")
+            print("   To use Claude AI, set CLAUDE_API_KEY in .env file")
             return self._mock_response(prompt, expect_json)
         
         try:
