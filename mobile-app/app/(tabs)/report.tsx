@@ -21,6 +21,9 @@ import {
   TextInput,
   Switch,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
@@ -535,19 +538,33 @@ export default function ReportScreen() {
       {/* Summary Modal */}
       <Modal
         visible={showSummaryModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
+        animationType="fade"
+        transparent={true}
         onRequestClose={() => setShowSummaryModal(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Medical Summary</Text>
-            <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSummaryModal(false)}>
+          <View style={styles.modalSpacer} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboard}
+          >
+            <Pressable
+              style={[styles.modalContent, { backgroundColor: colors.card }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Medical Summary</Text>
+                <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
 
-          <ScrollView style={styles.modalContent}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.modalScroll}
+              >
             {/* Transcript */}
             {transcript && (
               <View style={[styles.summaryField, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -641,36 +658,45 @@ export default function ReportScreen() {
                 placeholder="Enter follow-up instructions..."
                 placeholderTextColor={colors.textSecondary}
               />
-            </View>
-          </ScrollView>
+              </View>
+              </ScrollView>
 
-          {/* Modal Footer */}
-          <View style={[styles.modalFooter, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <TouchableOpacity
-              style={[
-                styles.modalButton,
-                { backgroundColor: colors.background, borderColor: colors.border },
-                isSaving && { opacity: 0.6 },
-              ]}
-              onPress={saveSummary}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
-            {summary && !summary.doctor_approved && (
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={approveSummary}
-              >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Approve & Finalize</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+              {/* Modal Footer */}
+              <View style={[styles.modalFooter, { borderColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    styles.modalButtonPrimary,
+                    { backgroundColor: colors.primary },
+                    isSaving && { opacity: 0.6 },
+                  ]}
+                  onPress={saveSummary}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary, { color: '#fff' }]}>
+                      Save Changes
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {summary && !summary.doctor_approved && (
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      styles.modalButtonSecondary,
+                      { backgroundColor: colors.background, borderColor: colors.border },
+                    ]}
+                    onPress={approveSummary}
+                  >
+                    <Text style={[styles.modalButtonText, { color: colors.text }]}>Approve & Finalize</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -794,63 +820,105 @@ const styles = StyleSheet.create({
   summaryPreview: {
     fontSize: 14,
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  modalSpacer: {
+    flex: 0.2,
+  },
+  modalKeyboard: {
+    flex: 0.8,
+  },
+  modalContent: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 10,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  modalContent: {
-    flex: 1,
-    padding: 16,
+  modalScroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 34,
   },
   summaryField: {
     marginBottom: 16,
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
   },
   fieldLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   fieldValue: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   textArea: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 80,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    minHeight: 100,
+    maxHeight: 200,
     textAlignVertical: 'top',
+    lineHeight: 22,
   },
   modalFooter: {
     flexDirection: 'row',
     gap: 12,
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
-    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  modalButtonPrimary: {
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  modalButtonSecondary: {
+    borderWidth: 1.5,
   },
   modalButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  modalButtonTextPrimary: {
+    color: '#fff',
   },
 });
 
