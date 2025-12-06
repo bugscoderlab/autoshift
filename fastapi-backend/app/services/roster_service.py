@@ -119,13 +119,15 @@ class RosterService:
         
         roster_entries.extend(flexible_entries)
         
-        # 3. Ensure all shifts are filled
+        # 3. Ensure all shifts are filled with minimum staffing
+        min_staff_per_shift = rules.get("min_staff_per_shift", 2) if rules else 2
         roster_entries = self._ensure_all_shifts_filled(
             roster_entries,
             doctors,
             year,
             month,
-            flexible_leave_map
+            flexible_leave_map,
+            min_staff_per_shift
         )
         
         # 4. Save all entries to database to get IDs
@@ -137,8 +139,8 @@ class RosterService:
         for entry in roster_entries:
             self.session.refresh(entry)
         
-        # 5. Check compliance
-        violations = self._check_compliance(roster_entries)
+        # 5. Check compliance with rules
+        violations = self._check_compliance(roster_entries, rules)
         
         return roster_entries, violations, ai_used
     
@@ -400,10 +402,11 @@ class RosterService:
         doctors: List[Doctor],
         year: int,
         month: int,
-        leave_map: Dict[int, List[date]]
+        leave_map: Dict[int, List[date]],
+        min_staff_per_shift: int = 2
     ) -> List[MonthlyRoster]:
         """
-        Ensure every shift type is filled for every day of the month.
+        Ensure every shift type is filled for every day of the month with minimum staffing.
         
         Args:
             roster_entries: Current roster entries
@@ -411,9 +414,10 @@ class RosterService:
             year: Year
             month: Month
             leave_map: Map of doctor_id to leave dates
+            min_staff_per_shift: Minimum number of staff required per shift
             
         Returns:
-            Updated roster entries with all shifts filled
+            Updated roster entries with all shifts filled to minimum staffing
         """
         # Get all dates in month
         _, last_day = monthrange(year, month)
@@ -435,11 +439,12 @@ class RosterService:
         new_entries = []
         for current_date in month_dates:
             for shift_type in shift_types:
-                # Check if this shift is already filled
+                # Check if this shift meets minimum staffing requirement
                 assigned_doctors = assignments_by_date.get(current_date, {}).get(shift_type, [])
+                current_staff_count = len(assigned_doctors)
                 
-                if len(assigned_doctors) == 0:
-                    # Shift is empty, need to assign a doctor
+                # Keep adding staff until we meet minimum requirement
+                while current_staff_count < min_staff_per_shift:
                     # Find available doctors (not on leave, not already assigned today)
                     assigned_today = set()
                     for st in shift_types:
@@ -472,9 +477,15 @@ class RosterService:
                         if shift_type not in assignments_by_date[current_date]:
                             assignments_by_date[current_date][shift_type] = []
                         assignments_by_date[current_date][shift_type].append(assigned_doctor.doctor_id)
-                        print(f"⚠️ [RosterService] Filled empty {shift_type} shift on {current_date} with doctor {assigned_doctor.doctor_id}")
+                        current_staff_count += 1
+                        
+                        if current_staff_count == 1:
+                            print(f"⚠️ [RosterService] Filled empty {shift_type} shift on {current_date} with doctor {assigned_doctor.doctor_id}")
+                        else:
+                            print(f"➕ [RosterService] Added doctor {assigned_doctor.doctor_id} to {shift_type} shift on {current_date} (now {current_staff_count}/{min_staff_per_shift})")
                     else:
-                        print(f"❌ [RosterService] WARNING: Cannot fill {shift_type} shift on {current_date} - no available doctors")
+                        print(f"❌ [RosterService] WARNING: Cannot fill {shift_type} shift on {current_date} to minimum ({min_staff_per_shift}) - only {current_staff_count} staff, no more available doctors")
+                        break  # Can't add more, break the while loop
         
         # Add new entries to roster
         roster_entries.extend(new_entries)
@@ -491,10 +502,12 @@ class RosterService:
     
     def _check_compliance(
         self,
-        roster_entries: List[MonthlyRoster]
+        roster_entries: List[MonthlyRoster],
+        rules: Optional[Dict[str, Any]] = None
     ) -> List[ViolationDetail]:
         """Check compliance rules for roster entries."""
         violations = []
+        min_staff_per_shift = rules.get("min_staff_per_shift", 2) if rules else 2
         
         # Get unique doctor IDs
         doctor_ids = set(entry.doctor_id for entry in roster_entries)
@@ -537,6 +550,26 @@ class RosterService:
                     date=v.get("date2"),
                     severity="error"
                 ))
+        
+        # Check minimum staffing per shift
+        from collections import defaultdict
+        
+        # Group entries by date and shift type
+        staffing_by_date_shift: Dict[date, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for entry in roster_entries:
+            staffing_by_date_shift[entry.date][entry.shift_type] += 1
+        
+        # Check each date and shift type
+        for shift_date, shift_counts in staffing_by_date_shift.items():
+            for shift_type in ["morning", "evening", "night"]:
+                staff_count = shift_counts.get(shift_type, 0)
+                if staff_count < min_staff_per_shift:
+                    violations.append(ViolationDetail(
+                        type="understaffed",
+                        description=f"{shift_type.capitalize()} shift on {shift_date} has {staff_count} staff, needs at least {min_staff_per_shift}",
+                        date=shift_date,
+                        severity="error"
+                    ))
         
         return violations
 
