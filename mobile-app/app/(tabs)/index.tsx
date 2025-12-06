@@ -144,38 +144,38 @@ export default function HomeScreen() {
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Greeting */}
       <View style={styles.greeting}>
-        <Text style={[styles.greetingSmall, { color: colors.textSecondary }]}>Good morning,</Text>
-        <Text style={[styles.greetingLarge, { color: colors.text }]}>{firstName}!</Text>
+        <Text style={[styles.greetingSmall, { color: colors.textSecondary }]}>Hello,
+        <Text style={[styles.greetingLarge, { color: colors.text }]}> {firstName}!</Text></Text>
       </View>
 
       {/* Next Shift Card */}
       {nextShift ? (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>Next Shift</Text>
-            <View style={styles.badge}>
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.cardHeader}>
+          <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>Next Shift</Text>
+          <View style={styles.badge}>
               <Text style={styles.badgeText}>
                 {new Date(nextShift.date).toDateString() === new Date().toDateString() ? 'Today' : 
                  new Date(nextShift.date).toDateString() === new Date(Date.now() + 86400000).toDateString() ? 'Tomorrow' :
                  new Date(nextShift.date).toLocaleDateString()}
               </Text>
-            </View>
           </View>
-          
-          <View style={styles.shiftInfo}>
-            <View style={[styles.iconBox, { backgroundColor: 'rgba(167, 139, 250, 0.2)' }]}>
-              <Ionicons name="time" size={24} color="#a78bfa" />
-            </View>
-            <View>
+        </View>
+        
+        <View style={styles.shiftInfo}>
+          <View style={[styles.iconBox, { backgroundColor: 'rgba(167, 139, 250, 0.2)' }]}>
+            <Ionicons name="time" size={24} color="#a78bfa" />
+          </View>
+          <View>
               <Text style={[styles.shiftTime, { color: colors.text }]}>{formatShiftTime(nextShift.shift_type)}</Text>
               <Text style={[styles.shiftType, { color: colors.textSecondary }]}>
                 {nextShift.shift_type.charAt(0).toUpperCase() + nextShift.shift_type.slice(1)} Shift
               </Text>
-            </View>
           </View>
+        </View>
 
-          <View style={styles.locationRow}>
-            <Ionicons name="location" size={16} color={colors.textSecondary} />
+        <View style={styles.locationRow}>
+          <Ionicons name="location" size={16} color={colors.textSecondary} />
             <Text style={[styles.locationText, { color: colors.textSecondary }]}>
               {currentDoctor?.department || 'Emergency Department'}
             </Text>
@@ -184,7 +184,7 @@ export default function HomeScreen() {
       ) : (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>No upcoming shifts scheduled</Text>
-        </View>
+      </View>
       )}
 
       {/* Quick Stats */}
@@ -204,28 +204,28 @@ export default function HomeScreen() {
       {/* Upcoming */}
       <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>This Week</Text>
       {weekShifts.length > 0 ? (
-        <View style={styles.weekList}>
+      <View style={styles.weekList}>
           {weekShifts.map((shift) => (
-            <View
+          <View
               key={shift.roster_id}
-              style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <View style={styles.weekDate}>
+            style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <View style={styles.weekDate}>
                 <Text style={[styles.weekDay, { color: colors.textSecondary }]}>{formatDayOfWeek(shift.date)}</Text>
                 <Text style={[styles.weekDateNum, { color: colors.text }]}>{formatDate(shift.date)}</Text>
-              </View>
-              <View style={styles.weekShiftInfo}>
+            </View>
+            <View style={styles.weekShiftInfo}>
                 <Text style={[styles.weekShiftName, { color: colors.text }]}>
                   {shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} Shift
                 </Text>
                 <Text style={[styles.weekShiftTime, { color: colors.textSecondary }]}>
                   {formatShiftTime(shift.shift_type)}
                 </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
-          ))}
-        </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </View>
+        ))}
+      </View>
       ) : (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>No shifts scheduled this week</Text>
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   greetingLarge: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
   },
   card: {

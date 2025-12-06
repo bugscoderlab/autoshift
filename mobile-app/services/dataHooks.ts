@@ -21,7 +21,7 @@ import api, {
 // ============== Mock Data ==============
 
 export const MOCK_DOCTORS: Doctor[] = [
-  { doctor_id: 1, name: 'Dr. John Smith', email: 'john.smith@hospital.com', phone: '+60 12-345 6789', category: 'fixed', department: 'Emergency', role: 'Senior Consultant', join_date: '2023-01-01', fte: 1.0, active: true },
+  { doctor_id: 1, name: 'John Doe', email: 'john.doe@hospital.com', phone: '+60 12-345 6789', category: 'fixed', department: 'Emergency', role: 'Senior Consultant', join_date: '2023-01-01', fte: 1.0, active: true },
   { doctor_id: 2, name: 'Dr. Sarah Johnson', email: 'sarah.j@hospital.com', phone: '+60 12-456 7890', category: 'fixed', department: 'ICU', role: 'Specialist', join_date: '2023-02-15', fte: 1.0, active: true },
   { doctor_id: 3, name: 'Dr. Michael Chen', email: 'michael.c@hospital.com', phone: '+60 13-567 8901', category: 'flexible', department: 'Ward A', role: 'Consultant', join_date: '2023-03-20', fte: 1.0, active: true },
   { doctor_id: 4, name: 'Dr. Emily Davis', email: 'emily.d@hospital.com', phone: '+60 14-678 9012', category: 'fixed', department: 'Surgery', role: 'Registrar', join_date: '2023-04-10', fte: 0.8, active: true },
@@ -30,40 +30,173 @@ export const MOCK_DOCTORS: Doctor[] = [
   { doctor_id: 7, name: 'Dr. Robert Lee', email: 'robert.l@hospital.com', phone: '+60 17-901 2345', category: 'flexible', department: 'ICU', role: 'Locum', join_date: '2023-07-20', fte: 0.5, active: true },
 ];
 
+// Shift timing information for rest rule calculations
+const SHIFT_INFO = {
+  morning: { start: 8, end: 16, duration: 8 },   // 08:00 - 16:00
+  evening: { start: 16, end: 24, duration: 8 },  // 16:00 - 00:00 (24:00)
+  night: { start: 0, end: 8, duration: 8 },      // 00:00 - 08:00
+};
+
 const generateMockRoster = (): RosterEntry[] => {
-  const today = new Date();
-  const entries: RosterEntry[] = [];
-  const shiftTypes = ['morning', 'evening', 'night'];
+  console.log('📦 [MOCK] Generating mock roster data for 30 days with rest rules...');
   
-  for (let i = 0; i < 14; i++) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
+  const entries: RosterEntry[] = [];
+  const shiftTypes: ('morning' | 'evening' | 'night')[] = ['morning', 'evening', 'night'];
+  
+  // Track last shift for each doctor: { date, endTimeInHours }
+  // endTimeInHours is the absolute hour from epoch start (dayIndex * 24 + hour)
+  const doctorLastShift: Map<number, { date: string; endTimeInHours: number }> = new Map();
+  
+  // Track which doctors already worked today
+  const doctorWorkedToday: Map<string, Set<number>> = new Map();
+  
+  let rosterIdCounter = 1;
+  
+  // Generate roster for 30 days
+  for (let dayIndex = 0; dayIndex < 30; dayIndex++) {
     const date = new Date(today);
-    date.setDate(today.getDate() + i);
+    date.setDate(today.getDate() + dayIndex);
     const dateStr = date.toISOString().split('T')[0];
+    const weekday = date.getDay(); // 0 = Sunday, 6 = Saturday
+    const isWeekend = weekday === 0 || weekday === 6;
     
-    // Add 3-4 shifts per day
-    for (let j = 0; j < 3; j++) {
-      const doctor = MOCK_DOCTORS[Math.floor(Math.random() * MOCK_DOCTORS.length)];
-      entries.push({
-        roster_id: i * 3 + j + 1,
-        date: dateStr,
-        doctor_id: doctor.doctor_id,
-        doctor_name: doctor.name,
-        shift_type: shiftTypes[j],
-        source: 'auto',
-      });
+    // Reset daily tracking
+    doctorWorkedToday.set(dateStr, new Set());
+    
+    // Each shift needs 2-3 doctors (2 on weekends, 3 on weekdays)
+    const doctorsPerShift = isWeekend ? 2 : 3;
+    
+    // Generate all 3 shifts for the day
+    for (const shiftType of shiftTypes) {
+      const shiftInfo = SHIFT_INFO[shiftType];
+      
+      // Calculate absolute start time in hours from epoch
+      // Night shift: starts at 00:00 of Day N+1 (or end of Day N)
+      let shiftStartTimeInHours: number;
+      if (shiftType === 'night') {
+        // Night shift starts at midnight (beginning of next day)
+        shiftStartTimeInHours = dayIndex * 24 + 24; // Midnight = start of next day
+      } else {
+        shiftStartTimeInHours = dayIndex * 24 + shiftInfo.start;
+      }
+      
+      const availableDoctors: Doctor[] = [];
+      
+      // Check which doctors can work this shift
+      for (const doctor of MOCK_DOCTORS) {
+        if (!doctor.active) continue;
+        
+        // Rule 1: Doctor cannot work more than one shift per day
+        if (doctorWorkedToday.get(dateStr)?.has(doctor.doctor_id)) {
+          continue;
+        }
+        
+        // Rule 2: Check 11-hour rest period
+        const lastShift = doctorLastShift.get(doctor.doctor_id);
+        if (lastShift) {
+          const hoursSinceLastShift = shiftStartTimeInHours - lastShift.endTimeInHours;
+          
+          // Must have at least 11 hours rest
+          if (hoursSinceLastShift < 11) {
+            continue;
+          }
+        }
+        
+        // Doctor is available for this shift
+        availableDoctors.push(doctor);
+      }
+      
+      // Select doctors for this shift
+      const selectedDoctors: Doctor[] = [];
+      const shuffled = [...availableDoctors].sort(() => Math.random() - 0.5);
+      
+      for (let i = 0; i < Math.min(doctorsPerShift, shuffled.length); i++) {
+        selectedDoctors.push(shuffled[i]);
+      }
+      
+      // If we don't have enough doctors, try to find more (with warnings logged)
+      if (selectedDoctors.length < 2) {
+        const remainingDoctors = MOCK_DOCTORS.filter(
+          d => d.active && 
+          !selectedDoctors.find(s => s.doctor_id === d.doctor_id) &&
+          !doctorWorkedToday.get(dateStr)?.has(d.doctor_id)
+        );
+        
+        const needed = 2 - selectedDoctors.length;
+        for (let i = 0; i < Math.min(needed, remainingDoctors.length); i++) {
+          selectedDoctors.push(remainingDoctors[i]);
+          console.log(`⚠️ [MOCK] Emergency staffing: ${remainingDoctors[i].name} on ${dateStr} ${shiftType}`);
+        }
+      }
+      
+      // Create roster entries for selected doctors
+      for (const doctor of selectedDoctors) {
+        entries.push({
+          roster_id: rosterIdCounter++,
+          date: dateStr,
+          doctor_id: doctor.doctor_id,
+          doctor_name: doctor.name,
+          shift_type: shiftType,
+          source: 'auto',
+        });
+        
+        // Mark doctor as worked today
+        doctorWorkedToday.get(dateStr)?.add(doctor.doctor_id);
+        
+        // Calculate shift end time in absolute hours
+        let shiftEndTimeInHours: number;
+        if (shiftType === 'night') {
+          // Night shift: 00:00 to 08:00 (ends at 08:00 of Day N+1)
+          shiftEndTimeInHours = dayIndex * 24 + 24 + 8; // Next day at 08:00
+        } else if (shiftType === 'evening') {
+          // Evening shift: 16:00 to 00:00 (ends at midnight)
+          shiftEndTimeInHours = dayIndex * 24 + 24; // Midnight
+        } else {
+          // Morning shift: 08:00 to 16:00
+          shiftEndTimeInHours = dayIndex * 24 + 16;
+        }
+        
+        // Update doctor's last shift
+        doctorLastShift.set(doctor.doctor_id, {
+          date: dateStr,
+          endTimeInHours: shiftEndTimeInHours,
+        });
+      }
     }
+  }
+  
+  console.log('📦 [MOCK] Generated', entries.length, 'roster entries for 30 days');
+  console.log('📦 [MOCK] Average shifts per day:', (entries.length / 30).toFixed(1));
+  console.log('📦 [MOCK] Doctors per shift (avg):', (entries.length / (30 * 3)).toFixed(1));
+  
+  // Validation: Check for violations
+  const violationsByDoctor: Map<number, number> = new Map();
+  entries.forEach(entry => {
+    const sameDay = entries.filter(e => e.date === entry.date && e.doctor_id === entry.doctor_id);
+    if (sameDay.length > 1) {
+      violationsByDoctor.set(entry.doctor_id, (violationsByDoctor.get(entry.doctor_id) || 0) + 1);
+    }
+  });
+  
+  if (violationsByDoctor.size > 0) {
+    console.log('⚠️ [MOCK] Violations detected:', Array.from(violationsByDoctor.entries()));
+  } else {
+    console.log('✅ [MOCK] No scheduling violations - all rules followed');
   }
   
   return entries;
 };
 
 const generateMockLeaveRequests = (): LeaveRequest[] => {
+  console.log('📦 [MOCK] Generating mock leave requests...');
   const today = new Date();
   return [
     {
       leave_id: 1,
       doctor_id: 1,
-      doctor_name: 'Dr. John Smith',
+      doctor_name: 'John Doe',
       start_date: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end_date: new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       leave_type: 'annual',
@@ -108,12 +241,13 @@ const generateMockLeaveRequests = (): LeaveRequest[] => {
 };
 
 const generateMockSwapRequests = (): SwapRequest[] => {
+  console.log('📦 [MOCK] Generating mock swap requests...');
   const today = new Date();
   return [
     {
       swap_id: 1,
       requester_id: 1,
-      requester_name: 'Dr. John Smith',
+      requester_name: 'John Doe',
       requester_shift_date: new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       requester_shift_type: 'morning',
       target_id: 2,
