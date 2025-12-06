@@ -132,6 +132,7 @@ export default function ScheduleScreen() {
   const [generationMonth, setGenerationMonth] = useState(new Date());
   const [previewMode, setPreviewMode] = useState<'calendar' | 'list'>('list');
   const [generatedRoster, setGeneratedRoster] = useState<RosterEntry[] | null>(null);
+  const [previewSelectedDate, setPreviewSelectedDate] = useState<string | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -621,7 +622,7 @@ export default function ScheduleScreen() {
                     keyboardType="numeric"
                     placeholderTextColor={colors.textSecondary}
                   />
-                  <Text style={[styles.unitLabel, { color: colors.textSecondary }]}>staff</Text>
+                  <Text style={[styles.unitLabel, { color: colors.textSecondary }]}>staffs</Text>
                 </View>
               </View>
 
@@ -635,7 +636,7 @@ export default function ScheduleScreen() {
                     keyboardType="numeric"
                     placeholderTextColor={colors.textSecondary}
                   />
-                  <Text style={[styles.unitLabel, { color: colors.textSecondary }]}>days</Text>
+                  <Text style={[styles.unitLabel, { color: colors.textSecondary }]}>  days</Text>
                 </View>
               </View>
             </View>
@@ -659,7 +660,7 @@ export default function ScheduleScreen() {
                   <View style={styles.ruleRow}>
                     <Text style={[styles.ruleLabel, { color: colors.text }]}>Day of Week</Text>
                     <TextInput 
-                      style={[styles.ruleInputSmall, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      style={[styles.ruleInputBig, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                       value={autoGenerate.day}
                       onChangeText={(val) => setAutoGenerate({...autoGenerate, day: val})}
                       placeholderTextColor={colors.textSecondary}
@@ -669,7 +670,7 @@ export default function ScheduleScreen() {
                   <View style={styles.ruleRow}>
                     <Text style={[styles.ruleLabel, { color: colors.text }]}>Time (24h)</Text>
                     <TextInput 
-                      style={[styles.ruleInputSmall, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      style={[styles.ruleInputBig, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                       value={autoGenerate.time}
                       onChangeText={(val) => setAutoGenerate({...autoGenerate, time: val})}
                       placeholder="HH:MM"
@@ -716,8 +717,8 @@ export default function ScheduleScreen() {
       >
         <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]} onPress={() => setRosterPreviewVisible(false)}>
           <Pressable 
-            style={[styles.rosterPreviewModal, { backgroundColor: colors.card, maxHeight: '80%' }]}
-            onPress={() => {}}
+            style={[styles.rosterPreviewModal, { backgroundColor: colors.card }]}
+            onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
@@ -760,10 +761,14 @@ export default function ScheduleScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.previewContent} showsVerticalScrollIndicator={false}>
-              {previewMode === 'list' ? (
-                // List View
-                generatedRoster && generatedRoster.length > 0 ? (
+            {previewMode === 'list' ? (
+              <ScrollView 
+                style={styles.previewContent} 
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
+                {/* List View */}
+                {generatedRoster && generatedRoster.length > 0 ? (
                   (() => {
                     // Group by date
                     const groupedByDate: Record<string, RosterEntry[]> = {};
@@ -787,23 +792,31 @@ export default function ScheduleScreen() {
 
                       return (
                         <View key={date} style={[styles.rosterItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                          <Text style={[styles.rosterDate, { color: colors.text }]}>{date}</Text>
-                          {Object.entries(groupedByShift).map(([shiftType, shiftEntries]) => (
-                            <View key={shiftType} style={{ marginTop: 8 }}>
-                              <Text style={[styles.rosterShift, { color: getShiftColor(shiftType) }]}>
-                                {shiftType} ({shiftEntries.length} staff)
-                              </Text>
-                              <View style={styles.rosterStaffPreview}>
-                                {shiftEntries.map((entry, i) => (
-                                  <View key={i} style={[styles.staffBadge, { backgroundColor: colors.primary + '20' }]}>
-                                    <Text style={[styles.staffBadgeText, { color: colors.primary }]}>
-                                      {entry.doctor_name || `Doctor ${entry.doctor_id}`}
-                                    </Text>
-                                  </View>
-                                ))}
+                          <View style={styles.rosterItemDate}>
+                            <Text style={[styles.rosterDate, { color: colors.text }]}>{date}</Text>
+                          </View>
+                          <View style={styles.rosterItemContent}>
+                            {Object.entries(groupedByShift).map(([shiftType, shiftEntries]) => (
+                              <View key={shiftType} style={{ marginBottom: 8 }}>
+                                <Text style={[styles.rosterShift, { color: getShiftColor(shiftType) }]}>
+                                  {shiftType} ({shiftEntries.length} staff)
+                                </Text>
+                                <View style={styles.rosterStaffPreview}>
+                                  {shiftEntries.map((entry, i) => (
+                                    <View key={i} style={[styles.staffBadge, { backgroundColor: colors.primary + '20' }]}>
+                                      <Text 
+                                        style={[styles.staffBadgeText, { color: colors.primary }]}
+                                        numberOfLines={2}
+                                        ellipsizeMode="tail"
+                                      >
+                                        {entry.doctor_name || `Doctor ${entry.doctor_id}`}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
                               </View>
-                            </View>
-                          ))}
+                            ))}
+                          </View>
                         </View>
                       );
                     });
@@ -812,14 +825,16 @@ export default function ScheduleScreen() {
                   <Text style={[styles.noSelectionText, { color: colors.textSecondary }]}>
                     No roster data generated yet
                   </Text>
-                )
-              ) : (
-                // Calendar View
-                <View style={{ padding: 12 }}>
-                  <Text style={[styles.infoText, { color: colors.textSecondary, textAlign: 'center', marginBottom: 16 }]}>
-                    Calendar view showing shift distribution
-                  </Text>
-                  {generatedRoster && generatedRoster.length > 0 ? (
+                )}
+              </ScrollView>
+            ) : (
+              <ScrollView 
+                style={styles.previewContent} 
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
+                {/* Calendar View */}
+                {generatedRoster && generatedRoster.length > 0 ? (
                     (() => {
                       // Create a simple calendar grid
                       const genMonth = generationMonth.getMonth();
@@ -841,49 +856,106 @@ export default function ScheduleScreen() {
                       for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
                       return (
-                        <View style={styles.calendarGrid}>
-                          {calendarDays.map((day, index) => {
-                            const dateKey = day ? `${genYear}-${String(genMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
-                            const dayRoster = day ? rosterByDate[dateKey] : null;
-                            const staffCount = dayRoster ? dayRoster.length : 0;
-
-                            return (
-                              <View
-                                key={index}
-                                style={[
-                                  styles.dateCell,
-                                  { 
-                                    width: (SCREEN_WIDTH - 64) / 7 - 4,
-                                    height: (SCREEN_WIDTH - 64) / 7 - 4,
-                                    backgroundColor: colors.card,
-                                    borderColor: colors.border
-                                  }
-                                ]}
-                              >
-                                {day && (
-                                  <>
-                                    <Text style={[styles.dateNumber, { color: colors.text }]}>{day}</Text>
-                                    {staffCount > 0 && (
-                                      <Text style={[styles.staffCountBadge, { color: colors.primary }]}>
-                                        {staffCount}
-                                      </Text>
-                                    )}
-                                  </>
-                                )}
+                        <>
+                          {/* Days of Week */}
+                          <View style={styles.daysRow}>
+                            {DAYS.map((day) => (
+                              <View key={day} style={[styles.dayCell, { width: (SCREEN_WIDTH - 64) / 7 }]}>
+                                <Text style={[styles.dayLabel, { color: colors.textSecondary }]}>{day}</Text>
                               </View>
-                            );
-                          })}
-                        </View>
+                            ))}
+                          </View>
+
+                          <View style={styles.calendarGrid}>
+                            {calendarDays.map((day, index) => {
+                              const dateKey = day ? `${genYear}-${String(genMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+                              const dayRoster = day ? rosterByDate[dateKey] : null;
+                              const staffCount = dayRoster ? dayRoster.length : 0;
+                              const isSelected = dateKey === previewSelectedDate;
+                              const today = new Date();
+                              const isToday = day === today.getDate() && genMonth === today.getMonth() && genYear === today.getFullYear();
+
+                              return (
+                                <TouchableOpacity
+                                  key={index}
+                                  style={[
+                                    styles.dateCell,
+                                    { 
+                                      width: (SCREEN_WIDTH - 64) / 7 - 4,
+                                      height: (SCREEN_WIDTH - 64) / 7 - 4,
+                                      backgroundColor: colors.card,
+                                      borderColor: colors.border
+                                    },
+                                    isSelected && { borderColor: colors.primary, borderWidth: 2, backgroundColor: colors.primary + '20' },
+                                    isToday && !isSelected && { borderColor: '#34d399', borderWidth: 2 },
+                                  ]}
+                                  onPress={() => day && setPreviewSelectedDate(dateKey)}
+                                  disabled={!day}
+                                >
+                                  {day && (
+                                    <>
+                                      <Text style={[
+                                        styles.dateNumber,
+                                        { color: colors.text },
+                                        isToday && { color: '#34d399', fontWeight: 'bold' },
+                                        isSelected && { color: colors.primary, fontWeight: 'bold' },
+                                      ]}>
+                                        {day}
+                                      </Text>
+                                      {dayRoster && dayRoster.length > 0 && (
+                                        <View style={styles.shiftColorDots}>
+                                          {dayRoster.map((shift, idx) => (
+                                            <View 
+                                              key={idx}
+                                              style={[
+                                                styles.shiftColorDot, 
+                                                { backgroundColor: getShiftColor(shift.shift_type) }
+                                              ]} 
+                                            />
+                                          ))}
+                                        </View>
+                                      )}
+                                    </>
+                                  )}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          
+                          {/* Selected Date Details */}
+                          {previewSelectedDate && rosterByDate[previewSelectedDate] && (
+                            <View style={[styles.shiftDetails, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
+                              <View style={styles.shiftHeader}>
+                                <Text style={[styles.shiftTypeBadge, { color: colors.text }]}>
+                                  {previewSelectedDate}
+                                </Text>
+                              </View>
+                              {rosterByDate[previewSelectedDate].map((entry, idx) => (
+                                <View key={idx} style={[styles.shiftRow, { borderTopColor: colors.border }]}>
+                                  <View style={styles.shiftInfo}>
+                                    <Text style={[styles.shiftType, { color: getShiftColor(entry.shift_type) }]}>
+                                      {entry.shift_type.charAt(0).toUpperCase() + entry.shift_type.slice(1)}
+                                    </Text>
+                                    <Text style={[styles.shiftDoctor, { color: colors.text }]}>
+                                      {entry.doctor_name || `Doctor ${entry.doctor_id}`}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </>
                       );
                     })()
                   ) : (
-                    <Text style={[styles.noSelectionText, { color: colors.textSecondary }]}>
-                      No roster data generated yet
-                    </Text>
+                    <View style={{ padding: 16 }}>
+                      <Text style={[styles.noSelectionText, { color: colors.textSecondary }]}>
+                        No roster data generated yet
+                      </Text>
+                    </View>
                   )}
-                </View>
-              )}
-            </ScrollView>
+              </ScrollView>
+            )}
 
             <View style={styles.modalFooter}>
               <TouchableOpacity 
@@ -1021,6 +1093,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  shiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+  },
+  shiftInfo: {
+    flex: 1,
+  },
+  shiftType: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  shiftDoctor: {
+    fontSize: 13,
   },
   shiftTypeBadgeText: {
     color: '#fff',
@@ -1177,6 +1267,15 @@ const styles = StyleSheet.create({
     width: 60,
     textAlign: 'center',
   },
+  ruleInputBig: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    width: 100,
+    textAlign: 'center',
+  },
   inputWithUnit: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1230,6 +1329,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'center',
     marginBottom: 12,
+    marginTop: 12,
   },
   previewModeButton: {
     paddingHorizontal: 20,
@@ -1324,11 +1424,16 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   rosterItemDate: {
-    gap: 4,
+    minWidth: 80,
+    maxWidth: 80,
+    marginRight: 12,
+  },
+  rosterItemContent: {
+    flex: 1,
+    minWidth: 0, // Prevent overflow
   },
   rosterDate: {
     fontSize: 13,
@@ -1342,17 +1447,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    width: '100%',
   },
   staffBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 6,
+    marginBottom: 6,
+    maxWidth: '48%', // Ensure badges wrap to new rows
+    minHeight: 24,
   },
   staffBadgeText: {
     fontSize: 11,
     fontWeight: '600',
+    textAlign: 'left',
+    lineHeight: 14,
   },
   modalFooter: {
     flexDirection: 'row',

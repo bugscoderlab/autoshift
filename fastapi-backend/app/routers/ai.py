@@ -41,7 +41,8 @@ class GenerateRosterRequest(BaseModel):
     """Request body for roster generation."""
     year: int
     month: int
-    rules: Dict[str, Any]
+    use_ai: bool = True
+    rules: Optional[Dict[str, Any]] = None
 
 
 @router.post("/explain")
@@ -272,104 +273,71 @@ async def generate_roster(
     session: Session = Depends(get_session)
 ):
     """
-    Generate a complete monthly roster using Claude AI.
+    Generate a complete monthly roster following backend-zack pattern.
+    Uses RosterService to generate roster with fixed patterns and AI for flexible doctors.
     """
-    from datetime import date
-    from calendar import monthrange
-    from ..models.leave import Leave, LeaveStatus
-    from ..models.shift_request import ShiftRequest, ShiftRequestStatus
-    from ..models.weekly_pattern import WeeklyFixedPattern
+    from ..services.roster_service import RosterService
     
-    # Get all active doctors
-    doctor_result = session.execute(select(Doctor).where(Doctor.active == True))
-    doctors = doctor_result.scalars().all()
-    
-    doctors_list = [
-        {
-            "doctor_id": d.doctor_id,
-            "name": d.name,
-            "category": d.category,
-            "department": d.department,
-            "fte": d.fte,
-            "weekly_fixed_pattern_id": d.weekly_fixed_pattern_id
+    try:
+        # Use roster service to generate roster
+        service = RosterService(session)
+        roster_entries, violations, ai_used = service.generate_monthly_roster(
+            request.year,
+            request.month,
+            use_ai=request.use_ai,
+            replace_existing=True
+        )
+        
+        # Get doctor names for response
+        doctor_ids = set(entry.doctor_id for entry in roster_entries)
+        doctors_dict = {}
+        for doctor_id in doctor_ids:
+            doctor = session.get(Doctor, doctor_id)
+            if doctor:
+                doctors_dict[doctor_id] = doctor.name
+        
+        # Convert to response format matching current /ai/generate-roster format
+        roster_list = []
+        for entry in roster_entries:
+            roster_list.append({
+                "roster_id": entry.roster_id,
+                "date": str(entry.date),
+                "doctor_id": entry.doctor_id,
+                "doctor_name": doctors_dict.get(entry.doctor_id, f"Doctor {entry.doctor_id}"),
+                "shift_type": entry.shift_type,
+                "source": entry.source,
+                "start_time": entry.start_time,
+                "end_time": entry.end_time
+            })
+        
+        # Build compliance report
+        violation_messages = [v.description for v in violations]
+        compliance_report = {
+            "is_compliant": len(violations) == 0,
+            "violations": violation_messages,
+            "violation_count": len(violations)
         }
-        for d in doctors
-    ]
-    
-    # Get approved leave for the month
-    start = date(request.year, request.month, 1)
-    end = date(request.year, request.month, monthrange(request.year, request.month)[1])
-    
-    leave_result = session.execute(
-        select(Leave)
-        .where(Leave.status == "approved")
-        .where(Leave.start_date <= end)
-        .where(Leave.end_date >= start)
-    )
-    leaves = leave_result.scalars().all()
-    
-    leave_list = [
-        {
-            "doctor_id": l.doctor_id,
-            "start_date": str(l.start_date),
-            "end_date": str(l.end_date),
-            "leave_type": l.leave_type
+        
+        # Build balance summary (simplified)
+        balance_summary = {}
+        for doctor_id in doctor_ids:
+            doctor_entries = [e for e in roster_entries if e.doctor_id == doctor_id]
+            balance_summary[doctor_id] = {
+                "total_shifts": len(doctor_entries),
+                "doctor_name": doctors_dict.get(doctor_id, f"Doctor {doctor_id}")
+            }
+        
+        return {
+            "year": request.year,
+            "month": request.month,
+            "roster": roster_list,
+            "compliance_report": compliance_report,
+            "balance_summary": balance_summary,
+            "ai_used": ai_used
         }
-        for l in leaves
-    ]
-    
-    # Get approved shift requests
-    shift_request_result = session.execute(
-        select(ShiftRequest)
-        .where(ShiftRequest.status == "approved")
-        .where(ShiftRequest.date >= start)
-        .where(ShiftRequest.date <= end)
-    )
-    shift_requests = shift_request_result.scalars().all()
-    
-    shift_requests_list = [
-        {
-            "doctor_id": sr.doctor_id,
-            "shift_date": str(sr.date),
-            "shift_type": sr.shift_type
-        }
-        for sr in shift_requests
-    ]
-    
-    # Get weekly patterns
-    pattern_result = session.execute(select(WeeklyFixedPattern))
-    patterns = pattern_result.scalars().all()
-    
-    patterns_dict = {
-        p.pattern_id: {
-            "pattern_name": p.pattern_name,
-            "week_number": p.week_number,
-            "day_1": p.day_1,
-            "day_2": p.day_2,
-            "day_3": p.day_3,
-            "day_4": p.day_4,
-            "day_5": p.day_5,
-            "day_6": p.day_6,
-            "day_7": p.day_7
-        }
-        for p in patterns
-    }
-    
-    # Generate roster using Claude
-    claude = ClaudeClient()
-    result = await claude.generate_roster(
-        year=request.year,
-        month=request.month,
-        doctors=doctors_list,
-        shift_requests=shift_requests_list,
-        leave_list=leave_list,
-        existing_patterns=patterns_dict
-    )
-    
-    return {
-        "year": request.year,
-        "month": request.month,
-        "roster": result.get("roster", []),
-        "compliance_report": result.get("compliance_report", {}),
-        "balance_summary": result.get("balance_summary", {})
-    }
+    except Exception as e:
+        error_detail = str(e)
+        import traceback
+        print(f"Error in generate_roster: {error_detail}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=error_detail)
