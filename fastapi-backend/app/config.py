@@ -31,9 +31,15 @@ class Settings(BaseSettings):
     claude_api_key: str = ""
     claude_api_base_url: str = "https://api.anthropic.com"
     
-    # Groq AI
+    # Groq AI (for Whisper transcription and fast inference)
     groq_api_key: str = ""
     groq_api_base_url: str = "https://api.groq.com"
+    
+    # Deepgram (Alternative transcription service)
+    deepgram_api_key: str = ""
+    
+    # ElevenLabs (Optional TTS for future features)
+    elevenlabs_api_key: str = ""
     
     # AI Parameters
     ai_max_tokens: int = 2000

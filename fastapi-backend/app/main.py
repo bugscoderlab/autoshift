@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from .database import create_db_and_tables
 from .config import get_settings
-from .routers import doctors_router, roster_router, leave_router, swap_router, ai_router
+from .routers import doctors_router, roster_router, leave_router, swap_router, ai_router, medical_summary_router
 
 settings = get_settings()
 
@@ -61,6 +61,7 @@ app.include_router(roster_router)
 app.include_router(leave_router)
 app.include_router(swap_router)
 app.include_router(ai_router)
+app.include_router(medical_summary_router)
 
 
 @app.get("/")
@@ -75,7 +76,8 @@ async def root():
             "roster": "/roster",
             "leave": "/leave",
             "swap": "/swap",
-            "ai": "/ai"
+            "ai": "/ai",
+            "medical_summary": "/medical-summary"
         },
         "docs": "/docs",
         "redoc": "/redoc"

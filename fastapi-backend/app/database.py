@@ -84,6 +84,7 @@ def create_db_and_tables():
     from .models.leave import Leave
     from .models.shift_request import ShiftRequest
     from .models.swap_request import SwapRequest
+    from .models.medical_summary import MedicalRecording, Transcript, MedicalSummary
     
     Base.metadata.create_all(bind=engine)
 
