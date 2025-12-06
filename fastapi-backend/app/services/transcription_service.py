@@ -40,38 +40,124 @@ class TranscriptionService:
         if not self.api_key:
             raise ValueError("Groq API key not configured. Set GROQ_API_KEY in .env")
         
+        # Check if file exists
+        if not os.path.exists(audio_file_path):
+            raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
+        
+        # Check file size (Groq requires at least some audio data)
+        file_size = os.path.getsize(audio_file_path)
+        if file_size < 100:  # Less than 100 bytes is likely empty/corrupt
+            print(f"⚠️ [TRANSCRIPTION] Audio file too small ({file_size} bytes), returning empty transcript")
+            return {
+                "text": "",
+                "language": language or "en",
+                "confidence": None
+            }
+        
         try:
+            # Determine MIME type based on file extension
+            file_ext = os.path.splitext(audio_file_path)[1].lower()
+            mime_types = {
+                ".m4a": "audio/m4a",
+                ".mp3": "audio/mpeg",
+                ".wav": "audio/wav",
+                ".ogg": "audio/ogg",
+                ".flac": "audio/flac",
+                ".webm": "audio/webm",
+            }
+            mime_type = mime_types.get(file_ext, "audio/mpeg")
+            
+            print(f"📝 [TRANSCRIPTION] Transcribing file: {audio_file_path}")
+            print(f"📝 [TRANSCRIPTION] File size: {file_size} bytes")
+            print(f"📝 [TRANSCRIPTION] MIME type: {mime_type}")
+            print(f"📝 [TRANSCRIPTION] Language hint: {language}")
+            
             with open(audio_file_path, "rb") as audio_file:
                 files = {
-                    "file": (os.path.basename(audio_file_path), audio_file, "audio/mpeg")
+                    "file": (os.path.basename(audio_file_path), audio_file, mime_type)
                 }
                 data = {
                     "model": "whisper-large-v3",
-                    "language": language,
                     "response_format": "json"
                 }
+                
+                # Only add language if specified (let Whisper auto-detect if not)
+                if language:
+                    data["language"] = language
                 
                 headers = {
                     "Authorization": f"Bearer {self.api_key}"
                 }
                 
                 async with httpx.AsyncClient(timeout=60.0) as client:
+                    print(f"📡 [TRANSCRIPTION] Calling Groq Whisper API...")
                     response = await client.post(
                         f"{self.api_base_url}/openai/v1/audio/transcriptions",
                         files=files,
                         data=data,
                         headers=headers
                     )
+                    
+                    print(f"📡 [TRANSCRIPTION] Groq API response status: {response.status_code}")
+                    
+                    # Handle different error cases
+                    if response.status_code == 400:
+                        error_text = response.text
+                        print(f"❌ [TRANSCRIPTION] Groq API 400 Bad Request: {error_text}")
+                        # For 400 errors, return empty transcript instead of failing
+                        # This allows the flow to continue
+                        return {
+                            "text": "",
+                            "language": language or "en",
+                            "confidence": None
+                        }
+                    
                     response.raise_for_status()
                     
                     result = response.json()
                     
+                    transcribed_text = result.get("text", "").strip()
+                    detected_lang = result.get("language", language or "en")
+                    
+                    print(f"✅ [TRANSCRIPTION] Transcription successful")
+                    print(f"📝 [TRANSCRIPTION] Text: {transcribed_text[:100]}...")
+                    print(f"📝 [TRANSCRIPTION] Detected language: {detected_lang}")
+                    
                     return {
-                        "text": result.get("text", ""),
-                        "language": result.get("language", language),
+                        "text": transcribed_text,
+                        "language": detected_lang,
                         "confidence": None  # Groq doesn't provide confidence score
                     }
+                    
+        except httpx.HTTPStatusError as e:
+            error_detail = ""
+            try:
+                error_detail = e.response.json()
+            except:
+                error_detail = e.response.text
+            
+            print(f"❌ [TRANSCRIPTION] HTTP Error {e.response.status_code}: {error_detail}")
+            
+            # For 400/401/429 errors, return empty transcript instead of crashing
+            # This allows the app to continue functioning
+            if e.response.status_code in [400, 401, 429]:
+                return {
+                    "text": "",
+                    "language": language or "en",
+                    "confidence": None
+                }
+            
+            # For other errors, raise exception
+            raise Exception(f"Transcription failed: HTTP {e.response.status_code} - {error_detail}")
+            
+        except httpx.TimeoutException:
+            print("❌ [TRANSCRIPTION] Request timeout")
+            raise Exception("Transcription timeout - audio file may be too large")
+            
         except Exception as e:
+            print(f"❌ [TRANSCRIPTION] Unexpected error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise Exception(f"Transcription failed: {str(e)}")
 
 

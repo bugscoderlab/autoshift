@@ -30,7 +30,7 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useThemeStore } from '../../stores/themeStore';
 import { useAuthStore } from '../../stores/authStore';
-import { medicalSummaryApi } from '../../services/api';
+import { medicalSummaryApi, translationApi } from '../../services/api';
 
 interface MedicalSummary {
   summary_id: number;
@@ -82,12 +82,43 @@ export default function ReportScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [currentPatientName, setCurrentPatientName] = useState<string>('');
 
+  // Translation state
+  const [showTranslateModal, setShowTranslateModal] = useState(false);
+  const [targetLanguage, setTargetLanguage] = useState('ms'); // Default: Malay
+  const [inputText, setInputText] = useState('');
+  const [translatedText, setTranslatedText] = useState('');
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [sttRecording, setSttRecording] = useState<Audio.Recording | null>(null);
+  const [supportedLanguages, setSupportedLanguages] = useState<Array<{ code: string; name: string }>>([]);
+
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load recent summaries on mount
   useEffect(() => {
     loadRecentSummaries();
+    loadSupportedLanguages();
   }, []);
+
+  // Load supported languages
+  const loadSupportedLanguages = async () => {
+    try {
+      const response = await translationApi.getSupportedLanguages();
+      setSupportedLanguages(response.languages);
+    } catch (error) {
+      console.error('Failed to load supported languages:', error);
+      // Fallback languages
+      setSupportedLanguages([
+        { code: 'en', name: 'English' },
+        { code: 'ms', name: 'Malay' },
+        { code: 'zh', name: 'Chinese' },
+        { code: 'ta', name: 'Tamil' },
+        { code: 'my', name: 'Burmese' },
+        { code: 'ne', name: 'Nepali' },
+        { code: 'bn', name: 'Bengali' },
+      ]);
+    }
+  };
 
   const loadRecentSummaries = async () => {
     try {
@@ -413,14 +444,165 @@ export default function ReportScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // ========== TRANSLATION FEATURES ==========
+  // These functions are ADDITIVE and do not modify existing functionality
+
+  // Start STT recording for translation
+  const startSTTRecording = async () => {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Microphone permission is required for voice input.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      
+      setSttRecording(recording);
+      setIsListening(true);
+      console.log('🎤 [TRANSLATION] Started STT recording');
+    } catch (error) {
+      console.error('Failed to start STT recording:', error);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  // Stop STT recording and transcribe
+  const stopSTTRecording = async () => {
+    if (!sttRecording) return;
+
+    try {
+      setIsListening(false);
+      await sttRecording.stopAndUnloadAsync();
+      const uri = sttRecording.getURI();
+      
+      if (!uri) {
+        Alert.alert('Error', 'No audio recorded.');
+        setSttRecording(null);
+        return;
+      }
+
+      // Transcribe audio using existing transcription service
+      console.log('📝 [TRANSLATION] Transcribing audio...');
+      const formData = new FormData();
+      const filename = uri.split('/').pop() || 'recording.m4a';
+      formData.append('audio_file', {
+        uri,
+        type: 'audio/m4a',
+        name: filename,
+      } as any);
+
+      // Create a temporary recording for transcription
+      const tempRecording = await medicalSummaryApi.createRecording(
+        currentDoctorId,
+        null, // patient_id
+        'Translation Input', // patient_name
+        true // consent_given
+      );
+
+      // Get API base URL
+      const { getCurrentApiUrl } = await import('../../services/apiConfig');
+      const apiBaseUrl = await getCurrentApiUrl();
+
+      const uploadResponse = await fetch(
+        `${apiBaseUrl}/medical-summary/transcribe/${tempRecording.recording_id}`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        throw new Error('Transcription failed');
+      }
+
+      const transcriptData = await uploadResponse.json();
+      const transcribedText = transcriptData.transcript_text || '';
+      
+      setInputText(transcribedText);
+      setSttRecording(null);
+      
+      console.log('✅ [TRANSLATION] Transcription complete:', transcribedText);
+      
+      // Auto-translate if text is available
+      if (transcribedText.trim()) {
+        translateText(transcribedText);
+      }
+    } catch (error: any) {
+      console.error('Failed to transcribe:', error);
+      Alert.alert('Error', 'Failed to transcribe audio. Please try typing instead.');
+      setIsListening(false);
+      setSttRecording(null);
+    }
+  };
+
+  // Translate text
+  const translateText = async (text?: string) => {
+    const textToTranslate = text || inputText.trim();
+    
+    if (!textToTranslate) {
+      Alert.alert('Error', 'Please enter text or use voice input.');
+      return;
+    }
+
+    setIsTranslating(true);
+    setTranslatedText('');
+
+    try {
+      console.log('🌐 [TRANSLATION] Translating to:', targetLanguage);
+      const result = await translationApi.translate(textToTranslate, targetLanguage);
+      setTranslatedText(result.translated);
+      console.log('✅ [TRANSLATION] Translation complete');
+    } catch (error: any) {
+      console.error('❌ [TRANSLATION] Translation failed:', error);
+      Alert.alert(
+        'Translation Error',
+        error.message || 'Failed to translate. Please check your GROQ_API_KEY configuration.'
+      );
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  // Copy translated text to clipboard
+  const copyTranslatedText = async () => {
+    if (!translatedText) return;
+    
+    try {
+      // Use React Native Clipboard
+      const { Clipboard } = require('@react-native-clipboard/clipboard');
+      Clipboard.setString(translatedText);
+      Alert.alert('Copied', 'Translated text copied to clipboard!');
+    } catch (error) {
+      // Fallback: show text in alert
+      Alert.alert('Translated Text', translatedText);
+    }
+  };
+
+  // Open translate modal with text from summary field
+  const openTranslateModal = (text?: string) => {
+    if (text) {
+      setInputText(text);
+    }
+    setShowTranslateModal(true);
+    setTranslatedText('');
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {/* <View style={[styles.header, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Ionicons name="document-text" size={24} color={colors.primary} />
           <Text style={[styles.headerTitle, { color: colors.text }]}>Medical Summary</Text>
-        </View>
+        </View> */}
 
         {/* Consent Section */}
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -606,9 +788,26 @@ export default function ReportScreen() {
                     </Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
-                  <Ionicons name="close" size={24} color={colors.text} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {/* Translate Button - ADDITIVE FEATURE */}
+                  {/* <TouchableOpacity
+                    onPress={() => {
+                      // Get text from current summary field or transcript
+                      const textToTranslate = transcript?.transcript_text || 
+                        editingSummary.chief_complaint || 
+                        editingSummary.assessment || 
+                        '';
+                      openTranslateModal(textToTranslate);
+                    }}
+                    style={[styles.translateButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
+                  >
+                    <Ionicons name="language" size={18} color={colors.primary} />
+                    <Text style={[styles.translateButtonText, { color: colors.primary }]}>Translate</Text>
+                  </TouchableOpacity> */}
+                  <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+                    <Ionicons name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <ScrollView
@@ -749,6 +948,164 @@ export default function ReportScreen() {
           </KeyboardAvoidingView>
         </Pressable>
       </Modal>
+
+      {/* Translation Modal - ADDITIVE FEATURE */}
+      <Modal
+        visible={showTranslateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTranslateModal(false)}
+      >
+        <Pressable 
+          style={styles.translateModalOverlay} 
+          onPress={() => setShowTranslateModal(false)}
+        >
+          <View style={styles.translateModalSpacer} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.translateModalKeyboard}
+          >
+            <Pressable
+              style={[styles.translateModalContent, { backgroundColor: colors.card }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+              
+              {/* Header */}
+              <View style={styles.translateModalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Translate</Text>
+                <TouchableOpacity onPress={() => setShowTranslateModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.translateModalScroll}
+              >
+                {/* Language Selector */}
+                <View style={[styles.translateSection, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Target Language</Text>
+                  <View style={[styles.languageSelector, { borderColor: colors.border }]}>
+                    {supportedLanguages.map((lang) => (
+                      <TouchableOpacity
+                        key={lang.code}
+                        onPress={() => setTargetLanguage(lang.code)}
+                        style={[
+                          styles.languageOption,
+                          {
+                            backgroundColor: targetLanguage === lang.code ? colors.primary : colors.card,
+                            borderColor: targetLanguage === lang.code ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.languageOptionText,
+                            { color: targetLanguage === lang.code ? '#fff' : colors.text },
+                          ]}
+                        >
+                          {lang.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Input Section */}
+                <View style={[styles.translateSection, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Input Text</Text>
+                  
+                  {/* Hold to Speak Button */}
+                  <TouchableOpacity
+                    onPressIn={startSTTRecording}
+                    onPressOut={stopSTTRecording}
+                    disabled={isListening || isTranslating}
+                    style={[
+                      styles.sttButton,
+                      {
+                        backgroundColor: isListening ? colors.primary : colors.primary + '20',
+                        borderColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Ionicons 
+                      name={isListening ? "mic" : "mic-outline"} 
+                      size={24} 
+                      color={isListening ? '#fff' : colors.primary} 
+                    />
+                    <Text
+                      style={[
+                        styles.sttButtonText,
+                        { color: isListening ? '#fff' : colors.primary },
+                      ]}
+                    >
+                      {isListening ? 'Listening...' : 'Hold to Speak'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Text Input */}
+                  <TextInput
+                    style={[
+                      styles.translateTextInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.card },
+                    ]}
+                    multiline
+                    placeholder="Type or speak text to translate..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={inputText}
+                    onChangeText={setInputText}
+                  />
+                </View>
+
+                {/* Translate Button */}
+                <TouchableOpacity
+                  onPress={() => translateText()}
+                  disabled={!inputText.trim() || isTranslating}
+                  style={[
+                    styles.translateActionButton,
+                    {
+                      backgroundColor: inputText.trim() && !isTranslating ? colors.primary : colors.border,
+                      opacity: inputText.trim() && !isTranslating ? 1 : 0.5,
+                    },
+                  ]}
+                >
+                  {isTranslating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="language" size={20} color="#fff" />
+                      <Text style={styles.translateActionButtonText}>Translate</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* Translated Result */}
+                {translatedText && (
+                  <View style={[styles.translateSection, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <View style={styles.translateResultHeader}>
+                      <Text style={[styles.fieldLabel, { color: colors.text }]}>Translated Text</Text>
+                      <TouchableOpacity
+                        onPress={copyTranslatedText}
+                        style={[styles.copyButton, { backgroundColor: colors.primary + '20' }]}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={colors.primary} />
+                        <Text style={[styles.copyButtonText, { color: colors.primary }]}>Copy</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={[styles.translateResultBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.translateResultText, { color: colors.text }]}>
+                        {translatedText}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -775,6 +1132,7 @@ const styles = StyleSheet.create({
   section: {
     marginHorizontal: 16,
     marginBottom: 16,
+    marginTop: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
@@ -974,6 +1332,133 @@ const styles = StyleSheet.create({
   },
   modalButtonTextPrimary: {
     color: '#fff',
+  },
+  // Translation Modal Styles - ADDITIVE FEATURE
+  translateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+  },
+  translateButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  translateModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  translateModalSpacer: {
+    flex: 0.3,
+  },
+  translateModalKeyboard: {
+    flex: 0.7,
+  },
+  translateModalContent: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  translateModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  translateModalScroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  translateSection: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  languageSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  languageOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  languageOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  sttButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 2,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sttButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  translateTextInput: {
+    minHeight: 100,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  translateActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+  translateActionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  translateResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  copyButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  translateResultBox: {
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 100,
+  },
+  translateResultText: {
+    fontSize: 15,
+    lineHeight: 22,
   },
 });
 

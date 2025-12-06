@@ -491,15 +491,13 @@ export default function ScheduleScreen() {
                     </Text>
                     {dayShifts && dayShifts.length > 0 && (
                       <View style={styles.shiftColorDots}>
-                        {dayShifts.map((shift, idx) => (
-                          <View 
-                            key={idx}
-                            style={[
-                              styles.shiftColorDot, 
-                              { backgroundColor: getShiftColor(shift.shift_type) }
-                            ]} 
-                          />
-                        ))}
+                        {/* Show only ONE dot for the user's shift (first shift if multiple) */}
+                        <View 
+                          style={[
+                            styles.shiftColorDot, 
+                            { backgroundColor: getShiftColor(dayShifts[0].shift_type) }
+                          ]} 
+                        />
                       </View>
                     )}
                   </>
@@ -1009,21 +1007,13 @@ export default function ScheduleScreen() {
                                       </Text>
                                       {dayRoster && dayRoster.length > 0 && (
                                         <View style={styles.shiftColorDots}>
-                                          {(() => {
-                                            // Get unique shift types for this day to avoid duplicate dots
-                                            const uniqueShiftTypes = Array.from(
-                                              new Set(dayRoster.map(shift => shift.shift_type))
-                                            );
-                                            return uniqueShiftTypes.map((shiftType, idx) => (
-                                              <View 
-                                                key={`${shiftType}-${idx}`}
-                                                style={[
-                                                  styles.shiftColorDot, 
-                                                  { backgroundColor: getShiftColor(shiftType) }
-                                                ]} 
-                                              />
-                                            ));
-                                          })()}
+                                          {/* Show only ONE dot for the user's shift (first shift if multiple) */}
+                                          <View 
+                                            style={[
+                                              styles.shiftColorDot, 
+                                              { backgroundColor: getShiftColor(dayRoster[0].shift_type) }
+                                            ]} 
+                                          />
                                         </View>
                                       )}
                                     </>
@@ -1683,4 +1673,3 @@ const styles = StyleSheet.create({
     padding: 20,
   },
 });
-

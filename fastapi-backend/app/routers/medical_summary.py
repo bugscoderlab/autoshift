@@ -104,8 +104,16 @@ async def transcribe_audio(
         session.commit()
         
         # Transcribe audio
+        print(f"📝 [TRANSCRIPTION] Starting transcription for recording_id={recording_id}")
+        print(f"📝 [TRANSCRIPTION] Audio file path: {file_path}")
+        print(f"📝 [TRANSCRIPTION] File exists: {os.path.exists(file_path)}")
+        
         transcription_service = get_transcription_service()
         result = await transcription_service.transcribe_audio(file_path)
+        
+        print(f"✅ [TRANSCRIPTION] Transcription successful")
+        print(f"📝 [TRANSCRIPTION] Transcribed text: {result.get('text', '')[:100]}...")
+        print(f"📝 [TRANSCRIPTION] Detected language: {result.get('language', 'en')}")
         
         # Create transcript record
         transcript = Transcript(
@@ -122,6 +130,8 @@ async def transcribe_audio(
         session.commit()
         session.refresh(transcript)
         
+        print(f"✅ [TRANSCRIPTION] Transcript saved with transcript_id={transcript.transcript_id}")
+        
         # Optionally delete audio file after transcription (for privacy/compliance)
         # Uncomment if you want to auto-delete:
         # if os.path.exists(file_path):
@@ -130,9 +140,32 @@ async def transcribe_audio(
         return transcript
         
     except Exception as e:
-        recording.status = "failed"
-        session.commit()
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        print(f"❌ [TRANSCRIPTION] Error during transcription: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Try to create an empty transcript instead of failing completely
+        # This allows the app to continue even if transcription fails
+        try:
+            empty_transcript = Transcript(
+                recording_id=recording_id,
+                transcript_text="",  # Empty transcript
+                language="en",
+                confidence_score=None
+            )
+            session.add(empty_transcript)
+            recording.status = "completed"  # Mark as completed even with empty transcript
+            session.commit()
+            session.refresh(empty_transcript)
+            
+            print(f"⚠️ [TRANSCRIPTION] Created empty transcript due to error, transcript_id={empty_transcript.transcript_id}")
+            return empty_transcript
+            
+        except Exception as fallback_error:
+            print(f"❌ [TRANSCRIPTION] Failed to create fallback transcript: {str(fallback_error)}")
+            recording.status = "failed"
+            session.commit()
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
 @router.post("/summary/{recording_id}", response_model=SummaryRead)

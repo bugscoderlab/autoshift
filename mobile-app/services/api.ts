@@ -567,6 +567,23 @@ export const medicalSummaryApi = {
   },
 };
 
+// Translation API
+export const translationApi = {
+  translate: async (text: string, targetLanguage: string): Promise<{ translated: string; target_language: string }> => {
+    return fetchApi<{ translated: string; target_language: string }>(`/translate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        text,
+        target_language: targetLanguage,
+      }),
+    });
+  },
+
+  getSupportedLanguages: async (): Promise<{ languages: Array<{ code: string; name: string }> }> => {
+    return fetchApi<{ languages: Array<{ code: string; name: string }> }>(`/translate/languages`);
+  },
+};
+
 // Default export
 export default {
   doctors: doctorApi,
@@ -575,5 +592,6 @@ export default {
   swap: swapApi,
   ai: aiApi,
   medicalSummary: medicalSummaryApi,
+  translation: translationApi,
   healthCheck,
 };

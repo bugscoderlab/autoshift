@@ -142,7 +142,12 @@ export default function SwapScreen() {
     });
     
     if (apiRoster && apiRoster.length > 0) {
-      const shifts: DisplayShift[] = apiRoster.map((entry: RosterEntry) => ({
+      // Deduplicate shifts: same date + shift_type = duplicate
+      const uniqueRoster = apiRoster.filter((entry, index, self) => 
+        index === self.findIndex(e => e.date === entry.date && e.shift_type === entry.shift_type)
+      );
+      
+      const shifts: DisplayShift[] = uniqueRoster.map((entry: RosterEntry) => ({
         id: String(entry.roster_id),
         roster_id: entry.roster_id,
         date: formatDate(entry.date),
@@ -151,7 +156,11 @@ export default function SwapScreen() {
         department: (entry as any).doctor_department || 'Emergency', // Use doctor_department from API
       }));
       setMyShifts(shifts);
-      console.log('✅ [SWAP] My Shifts updated:', { count: shifts.length, sample: shifts[0] });
+      console.log('✅ [SWAP] My Shifts updated (deduplicated):', { 
+        original_count: apiRoster.length,
+        unique_count: shifts.length,
+        sample: shifts[0] 
+      });
     } else {
       console.log('⚠️ [SWAP] No roster data, using fallback shifts');
     }
