@@ -61,12 +61,19 @@ export default function HomeScreen() {
   const { data: leaves, loading: leaveLoading, source: leaveSource } = useLeave({ doctor_id: currentDoctorId });
   
   // Calculate leave days left (assuming 14 days annual leave)
+  // Helper function to calculate days - matches leave tab calculation
+  const calculateDays = (startDate: string, endDate: string): number => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  };
+
   const annualLeaveDays = 14;
   const approvedLeaves = leaves?.filter(l => l.status === 'approved') || [];
   const usedLeaveDays = approvedLeaves.reduce((sum, leave) => {
-    const start = new Date(leave.start_date);
-    const end = new Date(leave.end_date);
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    // Use days field from API if available, otherwise calculate
+    const days = leave.days || calculateDays(leave.start_date, leave.end_date);
     return sum + days;
   }, 0);
   const leaveDaysLeft = annualLeaveDays - usedLeaveDays;
@@ -89,14 +96,14 @@ export default function HomeScreen() {
       if (approvedLeaves.length > 0) {
         console.log('🏠 [HOME] Approved leaves breakdown:', 
           approvedLeaves.map(l => {
-            const start = new Date(l.start_date);
-            const end = new Date(l.end_date);
-            const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const days = l.days || calculateDays(l.start_date, l.end_date);
             return {
+              leave_id: l.leave_id,
               type: l.leave_type,
               start: l.start_date,
               end: l.end_date,
-              days: days
+              days: days,
+              days_source: l.days ? 'API' : 'CALCULATED'
             };
           })
         );
@@ -106,24 +113,37 @@ export default function HomeScreen() {
     }
   }, [leaves, leaveLoading, usedLeaveDays, leaveDaysLeft, leaveSource, approvedLeaves.length]);
 
-  // Get this week's shifts
+  // Week navigation state
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, 1 = next week, etc.
+
+  // Get this week's shifts (with offset for navigation)
   const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay()); // Start from Sunday
+  startOfWeek.setDate(today.getDate() - today.getDay() + (weekOffset * 7)); // Start from Sunday + offset
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
 
+  // Format week range display
+  const formatWeekRange = () => {
+    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+    const start = startOfWeek.toLocaleDateString('en-US', options);
+    const end = endOfWeek.toLocaleDateString('en-US', options);
+    return `${start} - ${end}`;
+  };
+
   const weekShifts = monthRoster?.filter(shift => {
     const shiftDate = new Date(shift.date);
-    return shiftDate >= startOfWeek && shiftDate <= endOfWeek && shiftDate >= today;
+    return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
   }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
 
   useEffect(() => {
     console.log('🏠 [HOME] This week\'s shifts filtered:', {
+      week_offset: weekOffset,
+      date_range: formatWeekRange(),
       total_shifts: weekShifts.length,
       dates: weekShifts.map(s => s.date),
       source: weekShifts.length > 0 ? 'DATABASE' : 'NONE'
     });
-  }, [weekShifts]);
+  }, [weekShifts, weekOffset]);
 
   // Find next shift
   const upcomingShifts = monthRoster?.filter(shift => {
@@ -224,34 +244,61 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Upcoming */}
-      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>This Week</Text>
-      {weekShifts.length > 0 ? (
-      <View style={styles.weekList}>
-          {weekShifts.map((shift) => (
-          <View
-              key={shift.roster_id}
-            style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      {/* Weekly Schedule */}
+      <View style={styles.weekHeader}>
+        <View>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : `Week ${weekOffset + 1}`}
+          </Text>
+          <Text style={[styles.weekRange, { color: colors.textSecondary }]}>{formatWeekRange()}</Text>
+        </View>
+        <View style={styles.weekNavigation}>
+          <TouchableOpacity 
+            onPress={() => setWeekOffset(Math.max(0, weekOffset - 1))}
+            disabled={weekOffset === 0}
+            style={[styles.weekNavButton, weekOffset === 0 && styles.weekNavButtonDisabled]}
           >
-            <View style={styles.weekDate}>
+            <Ionicons 
+              name="chevron-back" 
+              size={20} 
+              color={weekOffset === 0 ? colors.border : colors.text} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => setWeekOffset(weekOffset + 1)}
+            style={styles.weekNavButton}
+          >
+            <Ionicons name="chevron-forward" size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {weekShifts.length > 0 ? (
+        <View style={styles.weekList}>
+          {weekShifts.map((shift) => (
+            <View
+              key={shift.roster_id}
+              style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <View style={styles.weekDate}>
                 <Text style={[styles.weekDay, { color: colors.textSecondary }]}>{formatDayOfWeek(shift.date)}</Text>
                 <Text style={[styles.weekDateNum, { color: colors.text }]}>{formatDate(shift.date)}</Text>
-            </View>
-            <View style={styles.weekShiftInfo}>
+              </View>
+              <View style={styles.weekShiftInfo}>
                 <Text style={[styles.weekShiftName, { color: colors.text }]}>
                   {shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} Shift
                 </Text>
                 <Text style={[styles.weekShiftTime, { color: colors.textSecondary }]}>
                   {formatShiftTime(shift.shift_type)}
                 </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
       ) : (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>No shifts scheduled this week</Text>
+          <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>No shifts scheduled for this week</Text>
         </View>
       )}
     </ScrollView>
@@ -355,7 +402,33 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  weekHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
+  },
+  weekRange: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  weekNavigation: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  weekNavButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  weekNavButtonDisabled: {
+    opacity: 0.3,
   },
   actionsGrid: {
     flexDirection: 'row',
