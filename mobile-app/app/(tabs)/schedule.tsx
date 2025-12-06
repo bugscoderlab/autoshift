@@ -137,18 +137,41 @@ export default function ScheduleScreen() {
   const month = currentDate.getMonth();
 
   // Fetch roster data from API - filter by current doctor for calendar display
-  const { data: myRosterData, loading: rosterLoading, refresh: refreshRoster } = useRoster({ 
+  const { data: myRosterData, loading: rosterLoading, refresh: refreshRoster, source: myRosterSource } = useRoster({ 
     year, 
     month: month + 1, // API expects 1-based month
     doctor_id: currentDoctorId // Always show only current user's shifts in calendar
   });
 
   // Fetch ALL roster data for the month (for date detail view)
-  const { data: allRosterData, loading: allRosterLoading } = useRoster({ 
+  const { data: allRosterData, loading: allRosterLoading, source: allRosterSource } = useRoster({ 
     year, 
     month: month + 1, // API expects 1-based month
     doctor_id: undefined // Get all doctors' shifts for detail view
   });
+
+  // Log data fetching
+  useEffect(() => {
+    console.log('📅 [SCHEDULE] Calendar - My Roster Data:', {
+      year,
+      month: month + 1,
+      doctor_id: currentDoctorId,
+      count: myRosterData?.length,
+      source: myRosterSource,
+      loading: rosterLoading,
+      sample: myRosterData?.[0]
+    });
+  }, [myRosterData, myRosterSource, rosterLoading, year, month, currentDoctorId]);
+
+  useEffect(() => {
+    console.log('📅 [SCHEDULE] All Roster Data for date details:', {
+      year,
+      month: month + 1,
+      count: allRosterData?.length,
+      source: allRosterSource,
+      loading: allRosterLoading
+    });
+  }, [allRosterData, allRosterSource, allRosterLoading, year, month]);
 
   // Convert API roster data to shifts map (for calendar - John Doe's shifts only)
   const myShifts: Record<string, RosterEntry[]> = {};

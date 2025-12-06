@@ -82,9 +82,18 @@ export default function LeaveScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const hideTimer = useRef<HideTimer>(null);
   const isAdmin = user?.role === 'ADMIN';
+  const currentDoctorId = user?.doctor_id || 1; // Default to John Doe (doctor_id: 1)
+  
+  console.log('✈️ [LEAVE TAB] Initializing for:', { 
+    doctor_id: currentDoctorId, 
+    isAdmin 
+  });
   
   // Fetch leave requests from API
-  const { data: apiLeaveRequests, loading, source, refresh } = useLeaveRequests();
+  // Admin sees all leaves, regular users see only their leaves
+  const { data: apiLeaveRequests, loading, source, refresh } = useLeaveRequests(
+    isAdmin ? {} : { doctor_id: currentDoctorId }
+  );
 
   const [activeTab, setActiveTab] = useState<'requests' | 'pending' | 'roster'>('requests');
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
@@ -103,6 +112,12 @@ export default function LeaveScreen() {
   
   // Transform API data when available
   useEffect(() => {
+    console.log('✈️ [LEAVE TAB] Raw API data:', {
+      count: apiLeaveRequests?.length,
+      source,
+      sample: apiLeaveRequests?.[0]
+    });
+    
     if (apiLeaveRequests && apiLeaveRequests.length > 0) {
       const transformed: DisplayLeaveRequest[] = apiLeaveRequests.map(leave => ({
         id: String(leave.leave_id),
@@ -119,8 +134,41 @@ export default function LeaveScreen() {
       }));
       setLeaveRequests(transformed);
       setDataSource(source);
+      
+      // Calculate leave summary for current doctor
+      const currentDoctorLeaves = isAdmin 
+        ? transformed.filter(l => l.doctor_id === currentDoctorId)
+        : transformed;
+      
+      const approvedLeaves = currentDoctorLeaves.filter(l => l.status === 'approved');
+      const usedDays = approvedLeaves.reduce((sum, leave) => sum + leave.days, 0);
+      const annualLeaveDays = 14;
+      const daysLeft = annualLeaveDays - usedDays;
+      
+      console.log('✈️ [LEAVE TAB] Leave Summary:', {
+        total_leaves: transformed.length,
+        current_doctor_leaves: currentDoctorLeaves.length,
+        approved: approvedLeaves.length,
+        pending: currentDoctorLeaves.filter(l => l.status === 'pending').length,
+        rejected: currentDoctorLeaves.filter(l => l.status === 'rejected').length,
+        annual_allocation: annualLeaveDays,
+        used_days: usedDays,
+        days_left: daysLeft,
+        source
+      });
+      
+      console.log('✈️ [LEAVE TAB] Approved leaves breakdown:', 
+        approvedLeaves.map(l => ({
+          type: l.type,
+          start: l.startDate,
+          end: l.endDate,
+          days: l.days
+        }))
+      );
+    } else {
+      console.log('⚠️ [LEAVE TAB] No leave data, using fallback');
     }
-  }, [apiLeaveRequests, source]);
+  }, [apiLeaveRequests, source, isAdmin, currentDoctorId]);
   
   const [rosterRules, setRosterRules] = useState({
     minRestHours: '11',

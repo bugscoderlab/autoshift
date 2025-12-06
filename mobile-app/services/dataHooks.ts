@@ -140,7 +140,8 @@ const generateMockRoster = (): RosterEntry[] => {
           doctor_name: doctor.name,
           shift_type: shiftType,
           source: 'auto',
-        });
+          doctor_department: doctor.department, // Include department for UI display
+        } as any);
         
         // Mark doctor as worked today
         doctorWorkedToday.get(dateStr)?.add(doctor.doctor_id);
@@ -192,7 +193,8 @@ const generateMockRoster = (): RosterEntry[] => {
 const generateMockLeaveRequests = (): LeaveRequest[] => {
   console.log('📦 [MOCK] Generating mock leave requests...');
   const today = new Date();
-  return [
+  
+  const leaves: LeaveRequest[] = [
     {
       leave_id: 1,
       doctor_id: 1,
@@ -201,43 +203,68 @@ const generateMockLeaveRequests = (): LeaveRequest[] => {
       end_date: new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       leave_type: 'annual',
       reason: 'Family vacation',
-      status: 'approved',
+      status: 'approved' as const,
       days: 3,
     },
     {
       leave_id: 2,
+      doctor_id: 1,
+      doctor_name: 'John Doe',
+      start_date: new Date(today.getTime() + 21 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      end_date: new Date(today.getTime() + 22 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      leave_type: 'medical',
+      reason: 'Medical checkup',
+      status: 'approved' as const,
+      days: 2,
+    },
+    {
+      leave_id: 3,
       doctor_id: 2,
       doctor_name: 'Dr. Sarah Johnson',
       start_date: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end_date: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       leave_type: 'medical',
       reason: 'Doctor appointment',
-      status: 'pending',
+      status: 'pending' as const,
       days: 1,
     },
     {
-      leave_id: 3,
+      leave_id: 4,
       doctor_id: 3,
       doctor_name: 'Dr. Michael Chen',
       start_date: new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end_date: new Date(today.getTime() + 12 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       leave_type: 'annual',
       reason: 'Personal matters',
-      status: 'pending',
+      status: 'pending' as const,
       days: 3,
     },
     {
-      leave_id: 4,
+      leave_id: 5,
       doctor_id: 4,
       doctor_name: 'Dr. Emily Davis',
       start_date: new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end_date: new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       leave_type: 'emergency',
       reason: 'Family emergency',
-      status: 'pending',
+      status: 'pending' as const,
       days: 1,
     },
   ];
+  
+  // Calculate totals for logging
+  const johnDoeLeaves = leaves.filter(l => l.doctor_id === 1);
+  const johnDoeApproved = johnDoeLeaves.filter(l => l.status === 'approved');
+  const johnDoeUsedDays = johnDoeApproved.reduce((sum, l) => sum + l.days, 0);
+  
+  console.log('📦 [MOCK] Leave summary for John Doe (doctor_id: 1):', {
+    total_leaves: johnDoeLeaves.length,
+    approved: johnDoeApproved.length,
+    used_days: johnDoeUsedDays,
+    days_left: 14 - johnDoeUsedDays
+  });
+  
+  return leaves;
 };
 
 const generateMockSwapRequests = (): SwapRequest[] => {

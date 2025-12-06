@@ -47,13 +47,33 @@ interface DisplaySwapRequest {
   target_id?: number;
 }
 
-// Fallback data
-const fallbackShifts: DisplayShift[] = [
-  { id: '1', date: 'Mon, Jan 15', type: 'Morning', time: '08:00-16:00', department: 'Emergency' },
-  { id: '2', date: 'Wed, Jan 17', type: 'Evening', time: '16:00-00:00', department: 'Ward A' },
-  { id: '3', date: 'Fri, Jan 19', type: 'Morning', time: '08:00-16:00', department: 'ICU' },
-  { id: '4', date: 'Mon, Jan 22', type: 'Night', time: '00:00-08:00', department: 'Emergency' },
-];
+// Generate fallback shifts dynamically
+const generateFallbackShifts = (): DisplayShift[] => {
+  const today = new Date();
+  const shifts: DisplayShift[] = [];
+  const shiftTypes = ['Morning', 'Evening', 'Night'];
+  const shiftTimes = ['08:00-16:00', '16:00-00:00', '00:00-08:00'];
+  const departments = ['Emergency', 'ICU', 'Ward A'];
+  
+  for (let i = 0; i < 4; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i * 2);
+    const shiftType = shiftTypes[i % 3];
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    
+    shifts.push({
+      id: String(i + 1),
+      date: dateStr,
+      type: shiftType,
+      time: shiftTimes[i % 3],
+      department: departments[i % 3],
+    });
+  }
+  
+  return shifts;
+};
+
+const fallbackShifts: DisplayShift[] = generateFallbackShifts();
 
 const fallbackDoctors: DisplayDoctor[] = [
   { id: '1', doctor_id: 1, name: 'Dr. Sarah Johnson', type: 'permanent', department: 'ICU' },
@@ -115,6 +135,12 @@ export default function SwapScreen() {
   
   // Transform API roster to shifts
   useEffect(() => {
+    console.log('🔄 [SWAP] Processing roster data:', { 
+      count: apiRoster?.length, 
+      source: rosterSource,
+      sample: apiRoster?.[0]
+    });
+    
     if (apiRoster && apiRoster.length > 0) {
       const shifts: DisplayShift[] = apiRoster.map((entry: RosterEntry) => ({
         id: String(entry.roster_id),
@@ -122,11 +148,14 @@ export default function SwapScreen() {
         date: formatDate(entry.date),
         type: entry.shift_type.charAt(0).toUpperCase() + entry.shift_type.slice(1),
         time: getShiftTime(entry.shift_type),
-        department: entry.doctor_name || 'Emergency',
+        department: (entry as any).doctor_department || 'Emergency', // Use doctor_department from API
       }));
       setMyShifts(shifts);
+      console.log('✅ [SWAP] My Shifts updated:', { count: shifts.length, sample: shifts[0] });
+    } else {
+      console.log('⚠️ [SWAP] No roster data, using fallback shifts');
     }
-  }, [apiRoster]);
+  }, [apiRoster, rosterSource]);
   
   // Transform API doctors
   useEffect(() => {

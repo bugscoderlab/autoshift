@@ -58,30 +58,53 @@ export default function HomeScreen() {
   }, [monthRoster, rosterLoading]);
 
   // Fetch leave data
-  const { data: leaves, loading: leaveLoading } = useLeave({ doctor_id: currentDoctorId });
+  const { data: leaves, loading: leaveLoading, source: leaveSource } = useLeave({ doctor_id: currentDoctorId });
   
   // Calculate leave days left (assuming 14 days annual leave)
   const annualLeaveDays = 14;
-  const usedLeaveDays = leaves?.filter(l => l.status === 'approved').reduce((sum, leave) => {
+  const approvedLeaves = leaves?.filter(l => l.status === 'approved') || [];
+  const usedLeaveDays = approvedLeaves.reduce((sum, leave) => {
     const start = new Date(leave.start_date);
     const end = new Date(leave.end_date);
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     return sum + days;
-  }, 0) || 0;
+  }, 0);
   const leaveDaysLeft = annualLeaveDays - usedLeaveDays;
 
   useEffect(() => {
     if (leaves) {
-      console.log('🏠 [HOME] Leave data loaded from database:', {
+      console.log('🏠 [HOME] Leave data loaded:', {
         total_leaves: leaves.length,
+        by_status: {
+          approved: leaves.filter(l => l.status === 'approved').length,
+          pending: leaves.filter(l => l.status === 'pending').length,
+          rejected: leaves.filter(l => l.status === 'rejected').length,
+        },
+        annual_allocation: annualLeaveDays,
         used_days: usedLeaveDays,
         days_left: leaveDaysLeft,
-        source: 'DATABASE'
+        source: leaveSource || 'DATABASE'
       });
+      
+      if (approvedLeaves.length > 0) {
+        console.log('🏠 [HOME] Approved leaves breakdown:', 
+          approvedLeaves.map(l => {
+            const start = new Date(l.start_date);
+            const end = new Date(l.end_date);
+            const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            return {
+              type: l.leave_type,
+              start: l.start_date,
+              end: l.end_date,
+              days: days
+            };
+          })
+        );
+      }
     } else if (!leaveLoading) {
       console.log('⚠️ [HOME] No leave data found');
     }
-  }, [leaves, leaveLoading, usedLeaveDays, leaveDaysLeft]);
+  }, [leaves, leaveLoading, usedLeaveDays, leaveDaysLeft, leaveSource, approvedLeaves.length]);
 
   // Get this week's shifts
   const startOfWeek = new Date(today);
