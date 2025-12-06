@@ -60,7 +60,7 @@ class RosterService:
         """
         ai_used = False
         
-        # Delete existing entries for this month if requested
+        # Delete existing entries for this month if requested (always do this to ensure fresh generation)
         if replace_existing:
             first_day = date(year, month, 1)
             _, last_day = monthrange(year, month)
@@ -72,9 +72,11 @@ class RosterService:
                 .where(MonthlyRoster.date <= last_day_date)
             ).scalars().all()
             
+            deleted_count = len(existing_entries)
             for entry in existing_entries:
                 self.session.delete(entry)
             self.session.commit()
+            print(f"🗑️ [RosterService] Deleted {deleted_count} existing roster entries for {year}-{month:02d} to ensure fresh generation")
         
         # Get all active doctors
         doctors = self.session.execute(
@@ -121,6 +123,7 @@ class RosterService:
         
         # 3. Ensure all shifts are filled with minimum staffing
         min_staff_per_shift = rules.get("min_staff_per_shift", 2) if rules else 2
+        print(f"👥 [RosterService] Using min_staff_per_shift = {min_staff_per_shift} (from rules: {rules})")
         roster_entries = self._ensure_all_shifts_filled(
             roster_entries,
             doctors,
@@ -442,6 +445,10 @@ class RosterService:
                 # Check if this shift meets minimum staffing requirement
                 assigned_doctors = assignments_by_date.get(current_date, {}).get(shift_type, [])
                 current_staff_count = len(assigned_doctors)
+                
+                # Log current state
+                if current_staff_count < min_staff_per_shift:
+                    print(f"📊 [RosterService] {shift_type} shift on {current_date}: {current_staff_count} staff (need {min_staff_per_shift})")
                 
                 # Keep adding staff until we meet minimum requirement
                 while current_staff_count < min_staff_per_shift:

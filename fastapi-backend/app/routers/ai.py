@@ -288,16 +288,43 @@ async def generate_roster(
         # Log the incoming request
         print(f"📅 [AI/GENERATE-ROSTER] Received request: year={request.year}, month={request.month}, use_ai={request.use_ai}")
         if request.rules:
-            print(f"📋 [AI/GENERATE-ROSTER] Rules provided: {request.rules}")
+            print(f"📋 [AI/GENERATE-ROSTER] Rules provided (raw): {request.rules}")
         
-        # Use roster service to generate roster
+        # Normalize rules: convert camelCase to snake_case if needed
+        normalized_rules = None
+        if request.rules:
+            # Helper function to get value with fallback
+            def get_rule_value(camel_key: str, snake_key: str, default: int):
+                # Try camelCase first, then snake_case, then default
+                value = request.rules.get(camel_key)
+                if value is None:
+                    value = request.rules.get(snake_key)
+                if value is None:
+                    return default
+                # Convert to int if it's a string or number
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return default
+            
+            normalized_rules = {
+                "min_rest_hours": get_rule_value("minRestHours", "min_rest_hours", 11),
+                "max_night_shifts": get_rule_value("maxNightShifts", "max_night_shifts", 4),
+                "max_weekly_hours": get_rule_value("maxWeeklyHours", "max_weekly_hours", 48),
+                "min_staff_per_shift": get_rule_value("minStaffPerShift", "min_staff_per_shift", 2),
+                "max_consecutive_days": get_rule_value("maxConsecutiveDays", "max_consecutive_days", 6),
+            }
+            print(f"📋 [AI/GENERATE-ROSTER] Normalized rules: {normalized_rules}")
+            print(f"📋 [AI/GENERATE-ROSTER] min_staff_per_shift = {normalized_rules['min_staff_per_shift']} (type: {type(normalized_rules['min_staff_per_shift'])})")
+        
+        # Use roster service to generate roster - always generate fresh, no cache
         service = RosterService(session)
         roster_entries, violations, ai_used = await service.generate_monthly_roster(
             request.year,
             request.month,
             use_ai=request.use_ai,
-            replace_existing=True,
-            rules=request.rules
+            replace_existing=True,  # Always replace existing
+            rules=normalized_rules  # Use normalized rules
         )
         
         print(f"✅ [AI/GENERATE-ROSTER] Generated {len(roster_entries)} roster entries for {request.year}-{request.month:02d}")

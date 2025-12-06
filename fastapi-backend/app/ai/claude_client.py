@@ -86,7 +86,10 @@ GENERATION RULES (defaults):
 - Maximum consecutive working days: 6 days
 """
         
-        prompt = f"""Generate a complete monthly roster for {month}/{year}.
+        import time
+        min_staff = rules.get('min_staff_per_shift', 2) if rules else 2
+        generation_id = int(time.time() * 1000)  # Unique ID to prevent caching
+        prompt = f"""Generate a complete monthly roster for {month}/{year} (Generation ID: {generation_id}).
 
 INPUTS:
 - Doctors: {json.dumps(doctors, default=str)}
@@ -96,12 +99,15 @@ INPUTS:
 {rules_section}
 SHIFT TYPES: morning (08:00-16:00), evening (16:00-00:00), night (00:00-08:00)
 
-TASK:
+CRITICAL REQUIREMENTS:
 1. Generate roster entries: {{"date": "YYYY-MM-DD", "doctor_id": int, "shift_type": string, "source": "auto|fixed-pattern|request"}}
 2. CRITICAL: Ensure EVERY day has ALL shift types filled (morning, evening, night). No gaps allowed.
-3. Ensure all rules are followed (especially the generation rules above)
-4. Include compliance_report with any violations
-5. Include balance_summary showing shift distribution
+3. CRITICAL: Each shift type MUST have at least {min_staff} staff members. If a shift has fewer than {min_staff} doctors, add more doctors to meet the minimum requirement.
+4. Ensure all rules are followed (especially the generation rules above)
+5. Include compliance_report with any violations
+6. Include balance_summary showing shift distribution
+
+IMPORTANT: This is a fresh generation - do not reuse or cache previous roster data. Generate completely new assignments.
 
 OUTPUT FORMAT (JSON only):
 {{
