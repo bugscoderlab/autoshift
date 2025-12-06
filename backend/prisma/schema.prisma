@@ -1,0 +1,599 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// CORE ENTITIES
+// ================================
+
+model Organization {
+  id           String   @id @default(uuid())
+  name         String
+  industryId   String?  @map("industry_id")
+  timezone     String   @default("UTC")
+  logoUrl      String?  @map("logo_url")
+  settingsJson Json     @default("{}") @map("settings_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  industry       Industry?        @relation(fields: [industryId], references: [id])
+  employees      Employee[]
+  shifts         Shift[]
+  shiftTemplates ShiftTemplate[]
+  leaveTypes     LeaveType[]
+  workloadCats   WorkloadCategory[]
+  cyclePatterns  CyclePattern[]
+  restRules      RestRule[]
+  staffingRules  StaffingRule[]
+  upskillContent UpskillContent[]
+  aiLogs         AILog[]
+  auditLogs      AuditLog[]
+
+  @@map("organizations")
+}
+
+model Industry {
+  id               String   @id @default(uuid())
+  name             String
+  code             String   @unique
+  description      String?
+  defaultRestHours Int      @default(11) @map("default_rest_hours")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organizations Organization[]
+  industryConfigs IndustryConfig[]
+
+  @@map("industries")
+}
+
+model IndustryConfig {
+  id            String @id @default(uuid())
+  industryId    String @map("industry_id")
+  orgId         String @map("org_id")
+  minRestHours  Int    @default(11) @map("min_rest_hours")
+  minShiftHours Int    @default(8) @map("min_shift_hours")
+  maxShiftHours Int    @default(12) @map("max_shift_hours")
+  configJson    Json   @default("{}") @map("config_json")
+
+  industry Industry @relation(fields: [industryId], references: [id])
+
+  @@map("industry_configs")
+}
+
+// ================================
+// USER & AUTH
+// ================================
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(EMPLOYEE)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLogin    DateTime? @map("last_login")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  employee      Employee?
+  refreshTokens RefreshToken[]
+  approvedLeaves LeaveRequest[] @relation("ApprovedBy")
+  approvedSwaps  SwapRequest[]  @relation("ApprovedBy")
+  notifications  Notification[]
+  aiLogs         AILog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPERVISOR
+  EMPLOYEE
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ================================
+// EMPLOYEE
+// ================================
+
+model Employee {
+  id              String   @id @default(uuid())
+  orgId           String   @map("org_id")
+  userId          String?  @unique @map("user_id")
+  roleId          String   @map("role_id")
+  typeId          String   @map("type_id")
+  employeeCode    String?  @unique @map("employee_code")
+  firstName       String   @map("first_name")
+  lastName        String   @map("last_name")
+  email           String
+  phone           String?
+  joinDate        DateTime @map("join_date")
+  seniorityLevel  Int      @default(1) @map("seniority_level")
+  preferredShift  String?  @map("preferred_shift")
+  maxHoursPerWeek Int      @default(40) @map("max_hours_per_week")
+  avatarUrl       String?  @map("avatar_url")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization     Organization       @relation(fields: [orgId], references: [id])
+  user             User?              @relation(fields: [userId], references: [id])
+  role             EmployeeRole       @relation(fields: [roleId], references: [id])
+  type             EmployeeType       @relation(fields: [typeId], references: [id])
+  shiftAssignments ShiftAssignment[]
+  shiftRequests    ShiftRequest[]
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  swapRequestsFrom SwapRequest[]      @relation("Requester")
+  swapRequestsTo   SwapRequest[]      @relation("Target")
+  workloadAssign   WorkloadAssignment[]
+  skills           EmployeeSkill[]
+
+  @@index([orgId])
+  @@index([roleId])
+  @@index([isActive])
+  @@map("employees")
+}
+
+model EmployeeRole {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  code      String
+  rankLevel Int      @default(1) @map("rank_level")
+  color     String   @default("#3B82F6")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  employees     Employee[]
+  restRules     RestRule[]
+  staffingRules StaffingRule[]
+
+  @@unique([orgId, code])
+  @@map("employee_roles")
+}
+
+model EmployeeType {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  leaveMultiplier Float    @default(1.0) @map("leave_multiplier")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  employees Employee[]
+
+  @@map("employee_types")
+}
+
+// ================================
+// SHIFTS
+// ================================
+
+model ShiftTemplate {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  name          String
+  code          String
+  startTime     String   @map("start_time")
+  endTime       String   @map("end_time")
+  durationHours Float    @map("duration_hours")
+  isHalfShift   Boolean  @default(false) @map("is_half_shift")
+  color         String   @default("#10B981")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization  Organization   @relation(fields: [orgId], references: [id])
+  shifts        Shift[]
+  staffingRules StaffingRule[]
+
+  @@unique([orgId, code])
+  @@map("shift_templates")
+}
+
+model Shift {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  templateId  String?  @map("template_id")
+  date        DateTime @db.Date
+  startTime   String   @map("start_time")
+  endTime     String   @map("end_time")
+  minStaff    Int      @default(1) @map("min_staff")
+  maxStaff    Int?     @map("max_staff")
+  isPublished Boolean  @default(false) @map("is_published")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  template     ShiftTemplate?     @relation(fields: [templateId], references: [id])
+  assignments  ShiftAssignment[]
+  requests     ShiftRequest[]
+  workloads    WorkloadAssignment[]
+
+  @@index([orgId, date])
+  @@index([isPublished])
+  @@map("shifts")
+}
+
+model ShiftAssignment {
+  id           String           @id @default(uuid())
+  employeeId   String           @map("employee_id")
+  shiftId      String           @map("shift_id")
+  date         DateTime         @db.Date
+  status       AssignmentStatus @default(ASSIGNED)
+  checkInTime  DateTime?        @map("check_in_time")
+  checkOutTime DateTime?        @map("check_out_time")
+  notes        String?
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  employee         Employee      @relation(fields: [employeeId], references: [id])
+  shift            Shift         @relation(fields: [shiftId], references: [id])
+  swapRequestsFrom SwapRequest[] @relation("RequesterShift")
+  swapRequestsTo   SwapRequest[] @relation("TargetShift")
+
+  @@unique([employeeId, shiftId])
+  @@index([employeeId])
+  @@index([date])
+  @@map("shift_assignments")
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model ShiftRequest {
+  id             String        @id @default(uuid())
+  employeeId     String        @map("employee_id")
+  shiftId        String        @map("shift_id")
+  preferenceRank Int           @default(1) @map("preference_rank")
+  status         RequestStatus @default(PENDING)
+  month          Int
+  year           Int
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  shift    Shift    @relation(fields: [shiftId], references: [id])
+
+  @@map("shift_requests")
+}
+
+// ================================
+// LEAVE
+// ================================
+
+model LeaveType {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  name        String
+  code        String
+  defaultDays Int      @default(0) @map("default_days")
+  isPaid      Boolean  @default(true) @map("is_paid")
+  requiresDoc Boolean  @default(false) @map("requires_doc")
+  color       String   @default("#F59E0B")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization  Organization   @relation(fields: [orgId], references: [id])
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+
+  @@unique([orgId, code])
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id              String        @id @default(uuid())
+  employeeId      String        @map("employee_id")
+  leaveTypeId     String        @map("leave_type_id")
+  startDate       DateTime      @map("start_date") @db.Date
+  endDate         DateTime      @map("end_date") @db.Date
+  totalDays       Float         @map("total_days")
+  status          RequestStatus @default(PENDING)
+  reason          String?
+  documents       Json          @default("[]")
+  approvedBy      String?       @map("approved_by")
+  approvedAt      DateTime?     @map("approved_at")
+  rejectionReason String?       @map("rejection_reason")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  approver  User?     @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id          String   @id @default(uuid())
+  employeeId  String   @map("employee_id")
+  leaveTypeId String   @map("leave_type_id")
+  year        Int
+  totalDays   Float    @map("total_days")
+  usedDays    Float    @default(0) @map("used_days")
+  pendingDays Float    @default(0) @map("pending_days")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+// ================================
+// SWAP
+// ================================
+
+model SwapRequest {
+  id                 String        @id @default(uuid())
+  requesterId        String        @map("requester_id")
+  targetId           String        @map("target_id")
+  requesterShiftId   String        @map("requester_shift_id")
+  targetShiftId      String        @map("target_shift_id")
+  status             SwapStatus    @default(PENDING)
+  reason             String?
+  targetResponse     String?       @map("target_response")
+  targetRespondedAt  DateTime?     @map("target_responded_at")
+  approvedBy         String?       @map("approved_by")
+  approvedAt         DateTime?     @map("approved_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  requester      Employee        @relation("Requester", fields: [requesterId], references: [id])
+  target         Employee        @relation("Target", fields: [targetId], references: [id])
+  requesterShift ShiftAssignment @relation("RequesterShift", fields: [requesterShiftId], references: [id])
+  targetShift    ShiftAssignment @relation("TargetShift", fields: [targetShiftId], references: [id])
+  approver       User?           @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  @@map("swap_requests")
+}
+
+enum SwapStatus {
+  PENDING
+  TARGET_APPROVED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ================================
+// WORKLOAD
+// ================================
+
+model WorkloadCategory {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  name        String
+  code        String
+  description String?
+  minStaff    Int      @default(1) @map("min_staff")
+  color       String   @default("#8B5CF6")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [orgId], references: [id])
+  assignments  WorkloadAssignment[]
+  staffingRules StaffingRule[]
+
+  @@unique([orgId, code])
+  @@map("workload_categories")
+}
+
+model WorkloadAssignment {
+  id         String   @id @default(uuid())
+  employeeId String   @map("employee_id")
+  categoryId String   @map("category_id")
+  shiftId    String   @map("shift_id")
+  date       DateTime @db.Date
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  employee Employee         @relation(fields: [employeeId], references: [id])
+  category WorkloadCategory @relation(fields: [categoryId], references: [id])
+  shift    Shift            @relation(fields: [shiftId], references: [id])
+
+  @@map("workload_assignments")
+}
+
+// ================================
+// RULES
+// ================================
+
+model RestRule {
+  id                  String   @id @default(uuid())
+  orgId               String   @map("org_id")
+  roleId              String?  @map("role_id")
+  minRestHours        Int      @default(11) @map("min_rest_hours")
+  maxConsecutiveDays  Int      @default(6) @map("max_consecutive_days")
+  maxHoursPerWeek     Int      @default(48) @map("max_hours_per_week")
+  maxHoursPerDay      Int      @default(12) @map("max_hours_per_day")
+  minBreakMinutes     Int      @default(30) @map("min_break_minutes")
+  rulesJson           Json     @default("{}") @map("rules_json")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization Organization  @relation(fields: [orgId], references: [id])
+  role         EmployeeRole? @relation(fields: [roleId], references: [id])
+
+  @@map("rest_rules")
+}
+
+model CyclePattern {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  name           String
+  patternWeeks   Int      @default(4) @map("pattern_weeks")
+  cycleStartDate DateTime @map("cycle_start_date") @db.Date
+  patternJson    Json     @map("pattern_json")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@map("cycle_patterns")
+}
+
+model StaffingRule {
+  id              String   @id @default(uuid())
+  orgId           String   @map("org_id")
+  categoryId      String?  @map("category_id")
+  templateId      String?  @map("template_id")
+  dayOfWeek       Int?     @map("day_of_week")
+  minStaff        Int      @default(1) @map("min_staff")
+  requiredRoles   Json     @default("[]") @map("required_roles")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id])
+  category     WorkloadCategory? @relation(fields: [categoryId], references: [id])
+  template     ShiftTemplate?    @relation(fields: [templateId], references: [id])
+  roles        EmployeeRole[]
+
+  @@map("staffing_rules")
+}
+
+// ================================
+// NOTIFICATIONS
+// ================================
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  body      String
+  dataJson  Json     @default("{}") @map("data_json")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ================================
+// UPSKILL
+// ================================
+
+model UpskillContent {
+  id              String      @id @default(uuid())
+  orgId           String      @map("org_id")
+  title           String
+  description     String?
+  type            ContentType
+  url             String?
+  durationMinutes Int?        @map("duration_minutes")
+  category        String?
+  tags            Json        @default("[]")
+  isActive        Boolean     @default(true) @map("is_active")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  organization Organization    @relation(fields: [orgId], references: [id])
+  skills       EmployeeSkill[]
+
+  @@map("upskill_content")
+}
+
+enum ContentType {
+  VIDEO
+  AUDIO
+  ARTICLE
+  DOCUMENT
+}
+
+model EmployeeSkill {
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  contentId   String    @map("content_id")
+  completedAt DateTime? @map("completed_at")
+  score       Float?
+  progressPct Float     @default(0) @map("progress_pct")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  employee Employee       @relation(fields: [employeeId], references: [id])
+  content  UpskillContent @relation(fields: [contentId], references: [id])
+
+  @@unique([employeeId, contentId])
+  @@map("employee_skills")
+}
+
+// ================================
+// LOGGING
+// ================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AILog {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  userId     String?  @map("user_id")
+  actionType String   @map("action_type")
+  provider   String
+  model      String?
+  input      String
+  output     String
+  tokensUsed Int?     @map("tokens_used")
+  latencyMs  Int?     @map("latency_ms")
+  success    Boolean  @default(true)
+  error      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([orgId, actionType])
+  @@index([createdAt])
+  @@map("ai_logs")
+}
+
