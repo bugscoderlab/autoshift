@@ -9,8 +9,32 @@
  */
 import { getCurrentApiUrl } from './apiConfig';
 
+<<<<<<< HEAD
 // API Base URL - will be set asynchronously
 let API_BASE_URL = 'http://localhost:8000'; // Fallback default
+=======
+// Use different URLs for different platforms/environments
+const getApiBaseUrl = () => {
+  // For physical devices, use the computer's local IP address
+  // Update this IP address to match your computer's IP (run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux)
+  const LOCAL_IP = '172.20.10.4'; // Your computer's IP address on the local network
+  
+  // For Android emulator, use 10.0.2.2 to access host machine
+  if (Platform.OS === 'android' && __DEV__) {
+    // Check if running on emulator or physical device
+    // Physical devices need the local IP, emulators use 10.0.2.2
+    return `http://${LOCAL_IP}:8000`;
+  }
+  
+  // For iOS simulator and web, try localhost first, then local IP
+  if (Platform.OS === 'web') {
+    return 'http://localhost:8000';
+  }
+  
+  // For iOS physical devices, use local IP
+  return `http://${LOCAL_IP}:8000`;
+};
+>>>>>>> c40b1b014d86c5e4d4eb6ef7e60e6f98411966d0
 
 // Initialize API URL on module load
 (async () => {
@@ -21,6 +45,9 @@ let API_BASE_URL = 'http://localhost:8000'; // Fallback default
     console.error('❌ [API] Failed to initialize API URL:', error);
   }
 })();
+
+// Log the backend URL being used
+console.log(`🔗 [API] Connecting to backend: ${API_BASE_URL}`);
 
 // Connection state
 let isBackendAvailable = true;
@@ -133,8 +160,47 @@ async function fetchApi<T>(
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
+      let errorMessage = `HTTP ${response.status}`;
+      let errorDetails: any = null;
+      try {
+        const error = await response.json();
+        errorDetails = error;
+        // Handle different error response formats
+        const detail = error.detail || error.message || error.error;
+        if (detail) {
+          // Ensure error message is always a string
+          if (typeof detail === 'string') {
+            errorMessage = detail;
+          } else if (typeof detail === 'object') {
+            errorMessage = JSON.stringify(detail);
+          } else {
+            errorMessage = String(detail);
+          }
+        }
+      } catch {
+        // If JSON parsing fails, try to get text response
+        try {
+          const text = await response.text();
+          errorDetails = text;
+          if (text) {
+            errorMessage = text.length > 200 ? `${text.substring(0, 200)}...` : text;
+          } else {
+            errorMessage = response.statusText || `HTTP ${response.status}`;
+          }
+        } catch {
+          errorMessage = response.statusText || `HTTP ${response.status}`;
+        }
+      }
+      
+      // Log detailed error information for debugging
+      console.error(`API Error (${endpoint}):`, {
+        status: response.status,
+        statusText: response.statusText,
+        errorDetails: errorDetails,
+        errorMessage: errorMessage,
+      });
+      
+      throw new Error(errorMessage);
     }
 
     return response.json();
