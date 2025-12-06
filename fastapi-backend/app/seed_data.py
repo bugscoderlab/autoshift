@@ -488,29 +488,44 @@ def seed_leave_and_swap_data(session: Session):
     today = date.today()
     
     # ============== Leave Requests ==============
+    # MATCHING MOCK DATA FROM dataHooks.ts
+    # John Doe (doctor_id: 1) has 2 approved leaves: 3 days annual + 2 days medical = 5 days used
+    # Total allocation: Annual(14) + Medical(14) + Emergency(5) + Other(3) = 36 days
+    # Remaining for John Doe: 36 - 5 = 31 days
+    
     leave_requests = [
-        # Approved leaves
+        # John Doe's approved leaves (doctor_id: 1)
         {
-            "doctor_id": doctors[0].doctor_id,
+            "doctor_id": doctors[0].doctor_id,  # John Doe
             "start_date": today + timedelta(days=7),
             "end_date": today + timedelta(days=9),
             "leave_type": "annual",
             "reason": "Family vacation",
             "status": "approved",
-            "approved_by": doctors[1].doctor_id
+            "approved_by": doctors[1].doctor_id,
+            "approved_at": datetime.utcnow()
         },
         {
-            "doctor_id": doctors[1].doctor_id,
+            "doctor_id": doctors[0].doctor_id,  # John Doe
+            "start_date": today + timedelta(days=21),
+            "end_date": today + timedelta(days=22),
+            "leave_type": "medical",
+            "reason": "Medical checkup",
+            "status": "approved",
+            "approved_by": doctors[1].doctor_id,
+            "approved_at": datetime.utcnow()
+        },
+        # Pending leaves from other doctors
+        {
+            "doctor_id": doctors[1].doctor_id,  # Dr. Sarah Johnson
             "start_date": today + timedelta(days=14),
             "end_date": today + timedelta(days=14),
             "leave_type": "medical",
             "reason": "Doctor appointment",
-            "status": "approved",
-            "approved_by": doctors[0].doctor_id
+            "status": "pending"
         },
-        # Pending leaves
         {
-            "doctor_id": doctors[2].doctor_id,
+            "doctor_id": doctors[2].doctor_id,  # Dr. Michael Chen
             "start_date": today + timedelta(days=10),
             "end_date": today + timedelta(days=12),
             "leave_type": "annual",
@@ -518,37 +533,12 @@ def seed_leave_and_swap_data(session: Session):
             "status": "pending"
         },
         {
-            "doctor_id": doctors[3].doctor_id,
+            "doctor_id": doctors[3].doctor_id,  # Dr. Emily Davis
             "start_date": today + timedelta(days=5),
             "end_date": today + timedelta(days=5),
             "leave_type": "emergency",
             "reason": "Family emergency",
             "status": "pending"
-        },
-        {
-            "doctor_id": doctors[4].doctor_id,
-            "start_date": today + timedelta(days=21),
-            "end_date": today + timedelta(days=25),
-            "leave_type": "annual",
-            "reason": "Overseas trip",
-            "status": "pending"
-        },
-        {
-            "doctor_id": doctors[5].doctor_id,
-            "start_date": today + timedelta(days=3),
-            "end_date": today + timedelta(days=3),
-            "leave_type": "medical",
-            "reason": "Not feeling well",
-            "status": "pending"
-        },
-        # Rejected leave
-        {
-            "doctor_id": doctors[6].doctor_id,
-            "start_date": today - timedelta(days=2),
-            "end_date": today - timedelta(days=1),
-            "leave_type": "annual",
-            "reason": "Short notice leave",
-            "status": "rejected"
         },
     ]
     
@@ -561,12 +551,18 @@ def seed_leave_and_swap_data(session: Session):
             reason=leave_data.get("reason"),
             status=leave_data["status"],
             approved_by=leave_data.get("approved_by"),
+            approved_at=leave_data.get("approved_at"),
             invite_coverage=True
         )
         session.add(leave)
     
     session.commit()
     print(f"  Created {len(leave_requests)} leave requests")
+    
+    # Log John Doe's leave summary
+    john_doe_leaves = [l for l in leave_requests if l["doctor_id"] == doctors[0].doctor_id and l["status"] == "approved"]
+    john_doe_used_days = sum((l["end_date"] - l["start_date"]).days + 1 for l in john_doe_leaves)
+    print(f"  John Doe (doctor_id: 1) - {len(john_doe_leaves)} approved leaves, {john_doe_used_days} days used, {36 - john_doe_used_days} days remaining")
     
     # ============== Swap Requests ==============
     swap_requests = [

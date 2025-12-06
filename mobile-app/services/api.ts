@@ -1,13 +1,18 @@
 /**
  * API Service for connecting to FastAPI backend
  * 
- * For mobile development:
- * - Android Emulator: use 10.0.2.2 (maps to host's localhost)
- * - iOS Simulator: use localhost
- * - Physical device: use your computer's local IP address
+ * Features:
+ * - Auto-detects backend IP address (no manual configuration needed!)
+ * - Caches successful IP for faster reconnection
+ * - Supports manual override for advanced users
+ * - Works across different devices and networks
  */
-import { Platform } from 'react-native';
+import { getCurrentApiUrl } from './apiConfig';
 
+<<<<<<< HEAD
+// API Base URL - will be set asynchronously
+let API_BASE_URL = 'http://localhost:8000'; // Fallback default
+=======
 // Use different URLs for different platforms/environments
 const getApiBaseUrl = () => {
   // For physical devices, use the computer's local IP address
@@ -29,8 +34,17 @@ const getApiBaseUrl = () => {
   // For iOS physical devices, use local IP
   return `http://${LOCAL_IP}:8000`;
 };
+>>>>>>> c40b1b014d86c5e4d4eb6ef7e60e6f98411966d0
 
-const API_BASE_URL = getApiBaseUrl();
+// Initialize API URL on module load
+(async () => {
+  try {
+    API_BASE_URL = await getCurrentApiUrl();
+    console.log(`🌐 [API] Initialized with base URL: ${API_BASE_URL}`);
+  } catch (error) {
+    console.error('❌ [API] Failed to initialize API URL:', error);
+  }
+})();
 
 // Log the backend URL being used
 console.log(`🔗 [API] Connecting to backend: ${API_BASE_URL}`);
@@ -48,13 +62,21 @@ export async function checkBackendConnection(): Promise<boolean> {
   }
   
   try {
+    // Refresh API URL in case it changed
+    API_BASE_URL = await getCurrentApiUrl();
+    
     const response = await fetch(`${API_BASE_URL}/health`, { 
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
     isBackendAvailable = response.ok;
     lastConnectionCheck = now;
-  } catch {
+    
+    if (response.ok) {
+      console.log(`✅ [API] Backend available at ${API_BASE_URL}`);
+    }
+  } catch (error) {
+    console.log(`⚠️ [API] Backend unavailable at ${API_BASE_URL}:`, String(error));
     isBackendAvailable = false;
     lastConnectionCheck = now;
   }
