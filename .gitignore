@@ -92,3 +92,4 @@ prisma/migrations/.snapshot
 tmp/
 temp/
 
+fastapi-backend_copy/
